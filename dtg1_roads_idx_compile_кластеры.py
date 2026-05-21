@@ -4,9 +4,8 @@
 """
 DT G1 Map Compiler: Roads IDX & DB Generator
 ============================================
-АБСОЛЮТНО ТОЧНАЯ ВЕРСИЯ: 
-Формирует Связанный список блоков (Branch -> Cluster Header -> Leaves)
-с соблюдением магической формулы v3 = (v2 * 28) + 8.
+ФИНАЛЬНАЯ ВЕРСИЯ: Использование плоских кластеров (Chunks) 
+с узлами-заголовками (v1=0, v2=N) вместо рекурсивных деревьев.
 """
 
 import os
@@ -16,7 +15,7 @@ import struct
 YZL_SIZE = 32
 SQT_HEADER_SIZE = 8
 NODE_SIZE = 28
-CHUNK_SIZE = 15  # Количество реальных дорог в кластере
+CHUNK_SIZE = 15  # В заводской карте кластеры небольшие (11-20 объектов)
 
 DBF_HEADER_LEN = 161
 RECORD_LEN = 145
@@ -28,16 +27,16 @@ def make_string_field(text, length):
 
 def make_dbf_descriptor(name, length):
     desc = name.encode('ascii').ljust(11, b'\x00')
-    desc += b'C' + b'\\x00' * 4 + bytes([length]) + b'\\x00' * 15
+    desc += b'C' + b'\x00' * 4 + bytes([length]) + b'\x00' * 15
     return desc
 
 def compile_db(db_records, out_file):
     bin_records = bytearray()
-    bin_records += b'\\x00' * RECORD_LEN  # Пустая запись 0
+    bin_records += b'\x00' * RECORD_LEN  # Пустая запись 0
     
     for rec in db_records:
         record_bytes = bytearray()
-        record_bytes += b'\\x20'
+        record_bytes += b'\x20'
         record_bytes += make_string_field(rec["osm_id"], 12)
         record_bytes += make_string_field(rec["code"], 4)
         record_bytes += make_string_field(rec["fclass"], 28)
@@ -45,14 +44,22 @@ def compile_db(db_records, out_file):
         bin_records += record_bytes
 
     total_records = len(db_records) + 1
+    
     dbf_header = bytearray()
-    dbf_header += b'\\x03\\x00\\x00\\x00' + struct.pack('<I', total_records)
-    dbf_header += struct.pack('<H', DBF_HEADER_LEN) + struct.pack('<H', RECORD_LEN) + b'\\x00' * 20
-    dbf_header += make_dbf_descriptor("osm_id", 12) + make_dbf_descriptor("code", 4)
-    dbf_header += make_dbf_descriptor("fclass", 28) + make_dbf_descriptor("name", 100) + b'\\x0D'
+    dbf_header += b'\x03\x00\x00\x00'
+    dbf_header += struct.pack('<I', total_records)
+    dbf_header += struct.pack('<H', DBF_HEADER_LEN)
+    dbf_header += struct.pack('<H', RECORD_LEN)
+    dbf_header += b'\x00' * 20
+    dbf_header += make_dbf_descriptor("osm_id", 12)
+    dbf_header += make_dbf_descriptor("code", 4)
+    dbf_header += make_dbf_descriptor("fclass", 28)
+    dbf_header += make_dbf_descriptor("name", 100)
+    dbf_header += b'\x0D'
     
     total_file_size = YZL_SIZE + DBF_HEADER_LEN + len(bin_records)
-    yzl_header = b'YZL\\x00' + struct.pack('<I', total_file_size) + b'\\x00' * 24
+    yzl_header = b'YZL\x00' + struct.pack('<I', total_file_size) + b'\x00' * 24
+    
     with open(out_file, 'wb') as f:
         f.write(yzl_header)
         f.write(dbf_header)
@@ -63,7 +70,12 @@ def create_map_name(name, items, out_file):
     miny = min(i["bbox"][1] for i in items)
     maxx = max(i["bbox"][2] for i in items)
     maxy = max(i["bbox"][3] for i in items)
-    map_info = {"centerLat": (miny + maxy) / 2.0, "centerLon": (minx + maxx) / 2.0, "mapName": name}
+    
+    map_info = {
+        "centerLat": (miny + maxy) / 2.0,
+        "centerLon": (minx + maxx) / 2.0,
+        "mapName": name
+    }
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(map_info, f, separators=(',', ':'))
 
@@ -82,6 +94,7 @@ def main():
     # Синхронизация DB
     db_records = []
     db_counter = 2 
+    
     for item in items:
         if item.get("name"):
             item["v2"] = db_counter
@@ -90,66 +103,58 @@ def main():
         else:
             item["v2"] = 1 
 
-    print("[>] Упаковка в строгую заводскую структуру блоков...")
+    print("[>] Упаковка дорог в плоские кластеры (Chunks)...")
     
     idx_buffer = bytearray()
     
-    # ------------------ TREE 0 (Основная геометрия) ------------------
-    idx_buffer.extend(b'SQT\\x01')
+    # --- TREE 0 (Основная геометрия) ---
+    idx_buffer.extend(b'SQT\x01')
     idx_buffer.extend(struct.pack("<I", 1))
     
+    # Разбиваем на чанки (группы)
     for i in range(0, len(items), CHUNK_SIZE):
         chunk = items[i:i+CHUNK_SIZE]
         
+        # Вычисляем общий BBox для заголовка кластера
         minx = min(item["bbox"][0] for item in chunk)
         miny = min(item["bbox"][1] for item in chunk)
         maxx = max(item["bbox"][2] for item in chunk)
         maxy = max(item["bbox"][3] for item in chunk)
         
-        first_road = chunk[0]
-        group_code = int(first_road["code"])
+        # Код берем у первого элемента (часам он нужен для стиля)
+        group_code = int(chunk[0]["code"])
         
-        # МАГИЯ ЗАВОДСКОГО ФОРМАТА:
-        # v2 кластера включает в себя сам заголовок кластера!
-        cluster_v2 = len(chunk) + 1 
+        # 1. ЗАПИСЬ УЗЛА-ЗАГОЛОВКА КЛАСТЕРА
+        # v1 = 0, v2 = количество элементов в кластере
+        idx_buffer.extend(struct.pack("<IIffffI", 0, len(chunk), minx, miny, maxx, maxy, group_code))
         
-        # v3 ветвления - это строго математическая формула: (кол-во узлов * 28) + 8
-        branch_v3 = (cluster_v2 * NODE_SIZE) + 8
-        
-        # 1. ЗАПИСЬ ВЕТВЛЕНИЯ (Branch Node)
-        # Берем v1 и v2 от первой дороги, чтобы обмануть парсер. Формат: <IIIffff
-        idx_buffer.extend(struct.pack("<IIIffff", first_road["v1"], first_road["v2"], branch_v3, minx, miny, maxx, maxy))
-        
-        # 2. ЗАГОЛОВОК КЛАСТЕРА (Cluster Header)
-        # v1 строго 0, v2 = кол-во дорог + 1. Формат: <IIffffI
-        idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_v2, minx, miny, maxx, maxy, group_code))
-        
-        # 3. САМИ ДОРОГИ (Leaves)
+        # 2. ЗАПИСЬ САМИХ ЭЛЕМЕНТОВ (Листьев)
         for item in chunk:
             idx_buffer.extend(struct.pack("<IIffffI", item["v1"], item["v2"], *item["bbox"], int(item["code"])))
             
-    # Завершающий паддинг
-    idx_buffer.extend(b'\\x00' * 8)
+    # Завершающий паддинг для первого дерева
+    idx_buffer.extend(b'\x00' * 8)
     
-    # ------------------ TREE 1 (Пустое) ------------------
-    idx_buffer.extend(b'SQT\\x01')
+    # --- TREE 1 (Пустое, для масштаба) ---
+    idx_buffer.extend(b'SQT\x01')
     idx_buffer.extend(struct.pack("<I", 1))
-    idx_buffer.extend(b'\\x00' * 8)
+    idx_buffer.extend(b'\x00' * 8)
     
-    # ------------------ TREE 2 (Пустое) ------------------
-    idx_buffer.extend(b'SQT\\x01')
+    # --- TREE 2 (Пустое, для масштаба) ---
+    idx_buffer.extend(b'SQT\x01')
     idx_buffer.extend(struct.pack("<I", 1))
-    idx_buffer.extend(b'\\x00' * 8)
+    idx_buffer.extend(b'\x00' * 8)
     
+    # Сборка финального файла
     total_size = YZL_SIZE + len(idx_buffer)
-    yzl = b'YZL\\x00' + struct.pack("<I", total_size) + b'\\x00' * 24
+    yzl = b'YZL\x00' + struct.pack("<I", total_size) + b'\x00' * 24
     
     with open("roads.idx", "wb") as f:
         f.write(yzl)
         f.write(idx_buffer)
 
     compile_db(db_records, "roads.db")
-    print(f"\\n[УСПЕХ] Индекс собран с идеальной заводской структурой кластеров! Готово к тесту.")
+    print(f"\n[УСПЕХ] Индекс собран по заводской логике кластеров! Слой готов к загрузке.")
 
 if __name__ == "__main__":
     main()
