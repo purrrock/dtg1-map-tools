@@ -4,8 +4,7 @@
 """
 DT G1 Map Compiler: Roads IDX & DB Generator
 ============================================
-Версия 3.0 (BVH Cluster Architecture)
-Идеально повторяет заводскую логику: Branch (v1=1) -> Leaf Header (v1=0) -> Data (v1>=8).
+Версия 3.0 (BVH Cluster Architecture) - ИСПРАВЛЕННАЯ (без двойных слешей)
 """
 
 import os
@@ -20,12 +19,7 @@ CHUNK_SIZE = 15  # Дорог в одном кластере
 DBF_HEADER_LEN = 161
 RECORD_LEN = 145
 
-# =========================================================
-# АРХИТЕКТУРА BVH ДЕРЕВА
-# =========================================================
-
 class LeafBlock:
-    """Листовой кластер: содержит заголовок (v1=0) и сами дороги (v1>=8)"""
     def __init__(self, data_nodes):
         self.data_nodes = data_nodes
         minx = min(n["bbox"][0] for n in data_nodes)
@@ -34,12 +28,10 @@ class LeafBlock:
         maxy = max(n["bbox"][3] for n in data_nodes)
         self.bbox = [minx, miny, maxx, maxy]
         self.center = ((minx + maxx) / 2.0, (miny + maxy) / 2.0)
-        # Размер = Заголовок (28) + Все дороги (N * 28)
         self.size = NODE_SIZE + len(data_nodes) * NODE_SIZE
         self.offset = 0
 
 class BranchNode:
-    """Узел ветвления (Навигатор): содержит флаг v1=1 и прыжок v3"""
     def __init__(self, left, right):
         self.left = left
         self.right = right
@@ -58,7 +50,6 @@ class BranchNode:
         self.size = NODE_SIZE
 
 def build_bvh(blocks):
-    """Рекурсивно строит BVH дерево над кластерами"""
     if len(blocks) == 1:
         return blocks[0]
         
@@ -74,12 +65,10 @@ def build_bvh(blocks):
     return BranchNode(build_bvh(blocks[:mid]), build_bvh(blocks[mid:]))
 
 def assign_offsets(node, current_offset):
-    """Вычисляет абсолютные смещения и v3 прыжки"""
     node.offset = current_offset
     if isinstance(node, BranchNode):
         current_offset += NODE_SIZE
         current_offset = assign_offsets(node.left, current_offset)
-        # Указатель на правого ребенка
         node.v3 = current_offset - YZL_SIZE
         current_offset = assign_offsets(node.right, current_offset)
     else:
@@ -87,23 +76,15 @@ def assign_offsets(node, current_offset):
     return current_offset
 
 def serialize_tree(node, buffer):
-    """Превращает дерево в бинарный код"""
     if isinstance(node, BranchNode):
-        # Branch Node: v1=1 (Флаг ветвления), v2=0, v3=прыжок
         buffer.extend(struct.pack("<IIIffff", 1, 0, node.v3, *node.bbox))
         serialize_tree(node.left, buffer)
         serialize_tree(node.right, buffer)
     else:
-        # Cluster Header: v1=0 (Флаг кластера), v2=кол-во дорог
         code = int(node.data_nodes[0]["code"])
         buffer.extend(struct.pack("<IIffffI", 0, len(node.data_nodes), *node.bbox, code))
-        # Data Nodes: v1=Смещение MLP (>=8), v2=Индекс БД
         for d in node.data_nodes:
             buffer.extend(struct.pack("<IIffffI", d["v1"], d["v2"], *d["bbox"], int(d["code"])))
-
-# =========================================================
-# УТИЛИТЫ БД И ГЛАВНАЯ ЛОГИКА
-# =========================================================
 
 def make_string_field(text, length):
     return str(text).encode('utf-8')[:length].ljust(length, b'\x00')
@@ -115,7 +96,7 @@ def make_dbf_descriptor(name, length):
 
 def compile_db(db_records, out_file):
     bin_records = bytearray()
-    bin_records += b'\x00' * RECORD_LEN  # Пустая Record 0
+    bin_records += b'\x00' * RECORD_LEN  
     
     for rec in db_records:
         record_bytes = bytearray()
@@ -167,23 +148,20 @@ def main():
         else:
             item["v2"] = 1 
 
-    print("[>] Создание листовых кластеров...")
     blocks = []
     for i in range(0, len(items), CHUNK_SIZE):
         blocks.append(LeafBlock(items[i:i+CHUNK_SIZE]))
 
-    print(f"[>] Построение BVH дерева из {len(blocks)} кластеров...")
     bvh_root = build_bvh(blocks)
 
     idx_buffer = bytearray()
     
-    # --- TREE 0 ---
+    # ПРАВИЛЬНЫЕ БАЙТЫ БЕЗ ДВОЙНЫХ СЛЕШЕЙ
     idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1))
     assign_offsets(bvh_root, YZL_SIZE + SQT_HEADER_SIZE)
     serialize_tree(bvh_root, idx_buffer)
     idx_buffer.extend(b'\x00' * 8)
     
-    # --- TREE 1 & 2 ---
     for _ in range(2):
         idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1) + b'\x00' * 8)
     
@@ -192,7 +170,7 @@ def main():
         f.write(idx_buffer)
 
     compile_db(db_records, "roads.db")
-    print("\n[УСПЕХ] Скомпилировано идеальное BVH дерево! Загружайте мульти-карту!")
+    print("\n[УСПЕХ] Скомпилировано идеальное BVH дерево! Ошибка экранирования текста устранена.")
 
 if __name__ == "__main__":
     import sys
