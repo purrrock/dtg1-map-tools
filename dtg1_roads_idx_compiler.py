@@ -4,8 +4,8 @@
 """
 DT G1 Map Compiler: Roads IDX & DB Generator
 ============================================
-ВЕРСИЯ "ПЛОСКИЕ КЛАСТЕРЫ": Отказ от рекурсивных деревьев. 
-Используется плоский список кластеров с правильными заголовками (v3-прыжками).
+Версия 3.0 (BVH Cluster Architecture)
+Идеально повторяет заводскую логику: Branch (v1=1) -> Leaf Header (v1=0) -> Data (v1>=8).
 """
 
 import os
@@ -15,12 +15,95 @@ import struct
 YZL_SIZE = 32
 SQT_HEADER_SIZE = 8
 NODE_SIZE = 28
-CHUNK_SIZE = 15  # Количество дорог в одном кластере
+CHUNK_SIZE = 15  # Дорог в одном кластере
 
 DBF_HEADER_LEN = 161
 RECORD_LEN = 145
 
-# ========== УТИЛИТЫ DB ==========
+# =========================================================
+# АРХИТЕКТУРА BVH ДЕРЕВА
+# =========================================================
+
+class LeafBlock:
+    """Листовой кластер: содержит заголовок (v1=0) и сами дороги (v1>=8)"""
+    def __init__(self, data_nodes):
+        self.data_nodes = data_nodes
+        minx = min(n["bbox"][0] for n in data_nodes)
+        miny = min(n["bbox"][1] for n in data_nodes)
+        maxx = max(n["bbox"][2] for n in data_nodes)
+        maxy = max(n["bbox"][3] for n in data_nodes)
+        self.bbox = [minx, miny, maxx, maxy]
+        self.center = ((minx + maxx) / 2.0, (miny + maxy) / 2.0)
+        # Размер = Заголовок (28) + Все дороги (N * 28)
+        self.size = NODE_SIZE + len(data_nodes) * NODE_SIZE
+        self.offset = 0
+
+class BranchNode:
+    """Узел ветвления (Навигатор): содержит флаг v1=1 и прыжок v3"""
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
+        self.bbox = [
+            min(left.bbox[0], right.bbox[0]),
+            min(left.bbox[1], right.bbox[1]),
+            max(left.bbox[2], right.bbox[2]),
+            max(left.bbox[3], right.bbox[3])
+        ]
+        self.center = (
+            (self.bbox[0] + self.bbox[2]) / 2.0,
+            (self.bbox[1] + self.bbox[3]) / 2.0
+        )
+        self.v3 = 0
+        self.offset = 0
+        self.size = NODE_SIZE
+
+def build_bvh(blocks):
+    """Рекурсивно строит BVH дерево над кластерами"""
+    if len(blocks) == 1:
+        return blocks[0]
+        
+    cx_range = max(b.center[0] for b in blocks) - min(b.center[0] for b in blocks)
+    cy_range = max(b.center[1] for b in blocks) - min(b.center[1] for b in blocks)
+    
+    if cx_range > cy_range:
+        blocks.sort(key=lambda b: b.center[0])
+    else:
+        blocks.sort(key=lambda b: b.center[1])
+        
+    mid = len(blocks) // 2
+    return BranchNode(build_bvh(blocks[:mid]), build_bvh(blocks[mid:]))
+
+def assign_offsets(node, current_offset):
+    """Вычисляет абсолютные смещения и v3 прыжки"""
+    node.offset = current_offset
+    if isinstance(node, BranchNode):
+        current_offset += NODE_SIZE
+        current_offset = assign_offsets(node.left, current_offset)
+        # Указатель на правого ребенка
+        node.v3 = current_offset - YZL_SIZE
+        current_offset = assign_offsets(node.right, current_offset)
+    else:
+        current_offset += node.size
+    return current_offset
+
+def serialize_tree(node, buffer):
+    """Превращает дерево в бинарный код"""
+    if isinstance(node, BranchNode):
+        # Branch Node: v1=1 (Флаг ветвления), v2=0, v3=прыжок
+        buffer.extend(struct.pack("<IIIffff", 1, 0, node.v3, *node.bbox))
+        serialize_tree(node.left, buffer)
+        serialize_tree(node.right, buffer)
+    else:
+        # Cluster Header: v1=0 (Флаг кластера), v2=кол-во дорог
+        code = int(node.data_nodes[0]["code"])
+        buffer.extend(struct.pack("<IIffffI", 0, len(node.data_nodes), *node.bbox, code))
+        # Data Nodes: v1=Смещение MLP (>=8), v2=Индекс БД
+        for d in node.data_nodes:
+            buffer.extend(struct.pack("<IIffffI", d["v1"], d["v2"], *d["bbox"], int(d["code"])))
+
+# =========================================================
+# УТИЛИТЫ БД И ГЛАВНАЯ ЛОГИКА
+# =========================================================
 
 def make_string_field(text, length):
     return str(text).encode('utf-8')[:length].ljust(length, b'\x00')
@@ -32,7 +115,7 @@ def make_dbf_descriptor(name, length):
 
 def compile_db(db_records, out_file):
     bin_records = bytearray()
-    bin_records += b'\x00' * RECORD_LEN  # Пустая запись 0
+    bin_records += b'\x00' * RECORD_LEN  # Пустая Record 0
     
     for rec in db_records:
         record_bytes = bytearray()
@@ -50,35 +133,30 @@ def compile_db(db_records, out_file):
     dbf_header += make_dbf_descriptor("osm_id", 12) + make_dbf_descriptor("code", 4)
     dbf_header += make_dbf_descriptor("fclass", 28) + make_dbf_descriptor("name", 100) + b'\x0D'
     
-    total_file_size = YZL_SIZE + DBF_HEADER_LEN + len(bin_records)
-    yzl_header = b'YZL\x00' + struct.pack('<I', total_file_size) + b'\x00' * 24
+    total_size = YZL_SIZE + DBF_HEADER_LEN + len(bin_records)
     with open(out_file, 'wb') as f:
-        f.write(yzl_header)
+        f.write(b'YZL\x00' + struct.pack('<I', total_size) + b'\x00' * 24)
         f.write(dbf_header)
         f.write(bin_records)
 
 def create_map_name(name, items, out_file):
+    if not items: return
     minx = min(i["bbox"][0] for i in items)
     miny = min(i["bbox"][1] for i in items)
     maxx = max(i["bbox"][2] for i in items)
     maxy = max(i["bbox"][3] for i in items)
-    map_info = {"centerLat": (miny + maxy) / 2.0, "centerLon": (minx + maxx) / 2.0, "mapName": name}
+    
+    map_info = {"centerLat": (miny+maxy)/2.0, "centerLon": (minx+maxx)/2.0, "mapName": name}
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(map_info, f, separators=(',', ':'))
 
-# ========== ГЛАВНАЯ ЛОГИКА ==========
-
 def main():
-    if not os.path.exists("roads_meta.json"):
-        print("Не найден roads_meta.json")
-        return
-        
+    if not os.path.exists("roads_meta.json"): return
     with open("roads_meta.json", 'r', encoding='utf-8') as f:
         items = json.load(f)
 
-    create_map_name("osm", items, "map.name")
+    create_map_name("DT_Map", items, "map.name")
 
-    # Синхронизация DB
     db_records = []
     db_counter = 2 
     for item in items:
@@ -89,65 +167,34 @@ def main():
         else:
             item["v2"] = 1 
 
-    print("[>] Упаковка в плоские кластеры (Без деревьев)...")
-    
+    print("[>] Создание листовых кластеров...")
+    blocks = []
+    for i in range(0, len(items), CHUNK_SIZE):
+        blocks.append(LeafBlock(items[i:i+CHUNK_SIZE]))
+
+    print(f"[>] Построение BVH дерева из {len(blocks)} кластеров...")
+    bvh_root = build_bvh(blocks)
+
     idx_buffer = bytearray()
     
-    # ------------------ TREE 0 (Основная геометрия) ------------------
-    idx_buffer.extend(b'SQT\x01')
-    idx_buffer.extend(struct.pack("<I", 1))
-    
-    current_offset = YZL_SIZE + SQT_HEADER_SIZE  # 40 байт
-    
-    for i in range(0, len(items), CHUNK_SIZE):
-        chunk = items[i:i+CHUNK_SIZE]
-        
-        minx = min(item["bbox"][0] for item in chunk)
-        miny = min(item["bbox"][1] for item in chunk)
-        maxx = max(item["bbox"][2] for item in chunk)
-        maxy = max(item["bbox"][3] for item in chunk)
-        
-        # Вычисляем, где начнется следующий кластер (Текущий оффсет + 28 байт заголовка + размер всех дорог внутри)
-        cluster_total_size = NODE_SIZE + (len(chunk) * NODE_SIZE)
-        next_cluster_offset = current_offset + cluster_total_size
-        
-        # v3 — это смещение до следующего кластера относительно YZL
-        v3 = next_cluster_offset - YZL_SIZE
-        
-        # 1. ЗАПИСЬ НАСТОЯЩЕГО ЗАГОЛОВКА КЛАСТЕРА
-        # Формат: <IIIffff (v1, v2, v3, MinX, MinY, MaxX, MaxY). Никакого Code здесь нет!
-        # v1 = 1 (уровень кластера), v2 = количество элементов внутри.
-        idx_buffer.extend(struct.pack("<IIIffff", 1, len(chunk), v3, minx, miny, maxx, maxy))
-        current_offset += NODE_SIZE
-        
-        # 2. ЗАПИСЬ САМИХ ДОРОГ (Листьев)
-        # Формат: <IIffffI (v1, v2, MinX, MinY, MaxX, MaxY, Code). 
-        for item in chunk:
-            idx_buffer.extend(struct.pack("<IIffffI", item["v1"], item["v2"], *item["bbox"], int(item["code"])))
-            current_offset += NODE_SIZE
-            
-    # Завершающий паддинг
+    # --- TREE 0 ---
+    idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1))
+    assign_offsets(bvh_root, YZL_SIZE + SQT_HEADER_SIZE)
+    serialize_tree(bvh_root, idx_buffer)
     idx_buffer.extend(b'\x00' * 8)
     
-    # ------------------ TREE 1 (Пустое) ------------------
-    idx_buffer.extend(b'SQT\x01')
-    idx_buffer.extend(struct.pack("<I", 1))
-    idx_buffer.extend(b'\x00' * 8)
-    
-    # ------------------ TREE 2 (Пустое) ------------------
-    idx_buffer.extend(b'SQT\x01')
-    idx_buffer.extend(struct.pack("<I", 1))
-    idx_buffer.extend(b'\x00' * 8)
-    
-    total_size = YZL_SIZE + len(idx_buffer)
-    yzl = b'YZL\x00' + struct.pack("<I", total_size) + b'\x00' * 24
+    # --- TREE 1 & 2 ---
+    for _ in range(2):
+        idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1) + b'\x00' * 8)
     
     with open("roads.idx", "wb") as f:
-        f.write(yzl)
+        f.write(b'YZL\x00' + struct.pack("<I", YZL_SIZE + len(idx_buffer)) + b'\x00' * 24)
         f.write(idx_buffer)
 
     compile_db(db_records, "roads.db")
-    print(f"\n[УСПЕХ] Сгенерирован плоский список кластеров. Готово к тесту!")
+    print("\n[УСПЕХ] Скомпилировано идеальное BVH дерево! Загружайте мульти-карту!")
 
 if __name__ == "__main__":
+    import sys
+    sys.setrecursionlimit(200000)
     main()
