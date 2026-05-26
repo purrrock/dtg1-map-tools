@@ -4,17 +4,8 @@
 """
 DT G1 -> GeoJSON exporter (Roads, Landuse, Water ONLY)
 ======================================================
-
-Оптимизированная версия:
-- Исключен O(N^2) баг при поиске SQT деревьев
-- Максимальная скорость I/O (пакетное чтение mlp и db)
-- Подробное отображение прогресса
-- Извлечение геометрии из Branch и Leaf узлов
-
-Использование:
-    python dtg1_exporter.py
-    python dtg1_exporter.py --debug
-    python dtg1_exporter.py path/to/map
+Архитектура: Flat List State Machine (Плоский список).
+Парсер строго следует аппаратному алгоритму чтения прошивки DT G1.
 """
 
 import os
@@ -80,10 +71,14 @@ def parse_db(path):
     return records
 
 # =========================================================
-# FAST IDX PARSER
+# RIGID STATE MACHINE IDX PARSER (REVERSE-ENGINEERED)
 # =========================================================
 
 def parse_idx(path):
+    """
+    Сканирует .idx файл и возвращает ТОЛЬКО валидные узлы данных.
+    Использует строгий автомат состояний плоского списка.
+    """
     nodes = []
     if not path.exists():
         return nodes
@@ -99,36 +94,45 @@ def parse_idx(path):
         if sqt_idx == -1:
             break
 
-        tree_start = sqt_idx
         offset = sqt_idx + SQT_HEADER_SIZE
-
-        # ОПТИМИЗАЦИЯ: Ищем следующее дерево заранее (избавляемся от O(N^2))
         next_sqt = data.find(b"SQT\x01", offset)
         limit = next_sqt if next_sqt != -1 else size
 
-        # Читаем узлы до начала следующего дерева (автоматически игнорируя padding)
+        # Инициализация автомата состояний для текущего LOD-уровня
+        data_nodes_left = 0
+
         while offset + NODE_SIZE <= limit:
             raw = data[offset:offset+NODE_SIZE]
-            v1, v2, val_0x08 = struct.unpack("<III", raw[:12])
+            
+            # Пропуск нулевого терминатора/выравнивания
+            if raw == b'\x00' * NODE_SIZE:
+                offset += NODE_SIZE
+                continue
 
-            if val_0x08 < 1000000:
-                is_branch = True
-                code = 0
-            else:
-                is_branch = False
+            v1, v2 = struct.unpack("<II", raw[:8])
+
+            if data_nodes_left > 0:
+                # СОСТОЯНИЕ 3: Чтение целевых Данных (Data Node)
                 code = struct.unpack("<I", raw[24:28])[0]
-
-            nodes.append({
-                "offset": offset,
-                "is_branch": is_branch,
-                "v1": v1,
-                "v2": v2,
-                "code": code
-            })
+                nodes.append({
+                    "offset": offset,
+                    "v1": v1,
+                    "v2": v2,
+                    "code": code
+                })
+                data_nodes_left -= 1
+            else:
+                if v1 == 0:
+                    # СОСТОЯНИЕ 2: Заголовок кластера (Cluster Header)
+                    # Извлекаем v2 (Кол-во объектов + 1) для настройки счетчика
+                    data_nodes_left = v2 - 1 if v2 > 0 else 0
+                else:
+                    # СОСТОЯНИЕ 1: Узел перехода (Navigation Node)
+                    # Мы парсим файл целиком, поэтому прыжки (v3) нам не нужны. Просто пропускаем.
+                    pass
 
             offset += NODE_SIZE
             
-        # Прыгаем сразу к следующему дереву
         offset = limit
 
     return nodes
@@ -202,19 +206,7 @@ def build_polygon(parts, points):
     return {"type": "Polygon", "coordinates": rings}
 
 # =========================================================
-# DB MATCHING
-# =========================================================
-
-def get_db_record(db_records, v2):
-    if not db_records or v2 <= 0:
-        return None
-    db_index = v2 - 1
-    if db_index < 0 or db_index >= len(db_records):
-        return None
-    return db_records[db_index]
-
-# =========================================================
-# EXPORT
+# EXPORT CORE
 # =========================================================
 
 def export_layer(base_dir, layer, debug=False):
@@ -228,19 +220,19 @@ def export_layer(base_dir, layer, debug=False):
         print("    [!] Missing .idx or .mlp files. Skipping.")
         return None
 
-    # Четкая индикация этапов
     sys.stdout.write("    [>] Parsing DB... ")
     sys.stdout.flush()
     db_records = parse_db(db_path)
     print("Done.")
 
-    sys.stdout.write("    [>] Parsing IDX... ")
+    sys.stdout.write("    [>] Parsing IDX (Strict State Machine)... ")
     sys.stdout.flush()
+    # Теперь parse_idx возвращает только 100% валидные Data Nodes
     nodes = parse_idx(idx_path)
     print("Done.")
 
     print(f"    [i] DB records : {len(db_records)}")
-    print(f"    [i] IDX nodes  : {len(nodes)}")
+    print(f"    [i] Target nodes: {len(nodes)}")
     print("    [>] Extracting Geometry & Building GeoJSON...")
 
     features = []
@@ -254,14 +246,10 @@ def export_layer(base_dir, layer, debug=False):
     with open(mlp_path, "rb") as f_mlp:
         for i, node in enumerate(nodes):
             
-            # Живой индикатор прогресса (обновляется каждую 1000 записей)
             if i % 1000 == 0 or i == total_nodes - 1:
                 progress = (i + 1) / total_nodes * 100
                 sys.stdout.write(f"\r        Progress: {i+1}/{total_nodes} ({progress:.1f}%)")
                 sys.stdout.flush()
-
-            if node["v1"] == 0:
-                continue
 
             props = {
                 "osm_id": "",
@@ -270,15 +258,18 @@ def export_layer(base_dir, layer, debug=False):
                 "name": "",
             }
 
-            db_rec = get_db_record(db_records, node["v2"])
-            if db_rec:
-                props.update(db_rec)
+            # Привязка базы данных
+            if node["v2"] > 0:
+                db_index = node["v2"] - 1
+                if db_index < len(db_records) and db_records[db_index]:
+                    props.update(db_records[db_index])
 
             if props["name"]:
                 named_count += 1
             else:
                 unnamed_count += 1
 
+            # Привязка геометрии
             g = read_mlp_geometry_fast(f_mlp, node["v1"], mlp_size)
 
             if not g:
@@ -303,11 +294,10 @@ def export_layer(base_dir, layer, debug=False):
                 feature["properties"]["_v1"] = node["v1"]
                 feature["properties"]["_v2"] = node["v2"]
                 feature["properties"]["_idx_offset"] = hex(node["offset"])
-                feature["properties"]["_is_branch"] = node["is_branch"]
 
             features.append(feature)
 
-    print() # Очистка строки после завершения прогресс-бара
+    print() 
 
     geojson = {
         "type": "FeatureCollection",
@@ -334,10 +324,6 @@ def export_layer(base_dir, layer, debug=False):
         "idx_nodes": total_nodes,
         "geometry_missing": geometry_missing,
     }
-
-# =========================================================
-# MAIN
-# =========================================================
 
 def main():
     parser = argparse.ArgumentParser()
