@@ -13,15 +13,58 @@ import json
 import struct
 import xml.etree.ElementTree as ET
 
-# Маппинг типов дорог (можно расширять)
+# ==============================================================================
+# ЭТАЛОННЫЙ МАППИНГ ТИПОВ ДОРОГ СОГЛАСНО road_codes.csv (Geofabrik GIS Schema)
+# ==============================================================================
+# Каждый целочисленный код (uint32) соответствует определенному стилю линии
+# в аппаратной таблице Look-Up Table (LUT) графического процессора часов C175C1.
 HIGHWAY_CODES = {
-    "motorway": 5111, "trunk": 5112, "primary": 5113, 
-    "secondary": 5114, "tertiary": 5115, "unclassified": 5121, 
-    "residential": 5122, "living_street": 5122, "pedestrian": 5122, 
-    "service": 5142, "track": 5145, "path": 5145, "footway": 5145, 
-    "cycleway": 5146
+    # Крупные магистрали и шоссе (Major roads - 511x)
+    "motorway": 5111,
+    "trunk": 5112,
+    "primary": 5113,
+    "secondary": 5114,
+    "tertiary": 5115,
+    
+    # Улицы и дороги местного значения (Minor Roads - 512x)
+    "unclassified": 5121,
+    "residential": 5122,
+    "living_street": 5123,
+    "pedestrian": 5124,
+    "busway": 5125,
+    
+    # Соединительные съезды и развязки (Highway links / sliproads / ramps - 513x)
+    "motorway_link": 5131,
+    "trunk_link": 5132,
+    "primary_link": 5133,
+    "secondary_link": 5134,
+    "tertiary_link": 5135,
+    
+    # Внутридворовые и технологические проезды (Very small roads - 514x)
+    "service": 5141,
+    "track": 5142,          # Без явного указания качества покрытия (tracktype)
+    "track_grade1": 5143,   # Твердое покрытие (асфальт/бетон)
+    "track_grade2": 5144,   # Спрессованный грунт/гравий
+    "track_grade3": 5145,   # Неустойчивый сухой грунт
+    "track_grade4": 5146,   # Грунтовая дорога с колейностью
+    "track_grade5": 5147,   # Труднопроходимая тропа / просека
+    
+    # Пешеходные и велосипедные пути (Paths unsuitable for cars - 515x)
+    "bridleway": 5151,      # Дорожки для верховой езды
+    "cycleway": 5152,       # Выделенные велодорожки (аппаратно скрываются на G1)
+    "footway": 5153,        # Пешеходные тротуары
+    "path": 5154,           # Неспецифицированные грунтовые тропы
+    "steps": 5155,          # Лестницы
+    
+    # Резервные и неопознанные классы (Unknown / Fallback - 519x)
+    "road": 5199,
+    "unknown": 5199
 }
-DEFAULT_CODE = 5142
+
+# В качестве фолбека используем код 5199 (unknown), чтобы не путать 
+# нераспознанные теги с легитимными сельскохозяйственными дорогами (5142).
+DEFAULT_CODE = 5199
+# Длина заголовка YZL (в байтах) картографических слоев платформы C175C1
 YZL_SIZE = 32
 
 def parse_osm_geometry(osm_file):
