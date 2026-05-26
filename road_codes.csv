@@ -1,0 +1,35 @@
+Code,fclass,Description,OSM Tags
+511x,Major roads,,
+5111,motorway,Motorway/freeway,highway=motorway
+5112,trunk,"Important roads, typically divided",highway=trunk
+5113,primary,"Primary roads, typically national.",highway=primary
+5114,secondary,"Secondary roads, typically regional.",highway=secondary
+5115,tertiary,"Tertiary roads, typically local.",highway=tertiary
+512x,Minor Roads,,
+5121,unclassified,Smaller local roads,highway=unclassified
+5122,residential,Roads in residential areas,highway=residential
+5123,living_street,Streets where pedestrians have priority,highway=living_street
+5124,pedestrian,Pedestrian only streets,highway=pedestrian
+5125,busway,"Dedicated roads for bus, usually closed for any mode of transport except public transport.",highway=busway
+513x,Highway links (sliproads/ramps),,
+5131,motorway_link,Roads that connect from one road to another of the same of lower category.,highway=motorway_link
+5132,trunk_link,,highway=trunk_link
+5133,primary_link,,highway=primary_link
+5134,secondary_link,,highway=secondary_link
+5135,tertiary_link,,highway=tertiary_link
+514x,Very small roads,,
+5141,service,"Service roads for access to buildings, parking lots, etc.",highway=service
+5142,track,"For agricultural use, in forests, etc. Often gravel roads.",highway=track without tracktype specification
+5143,track_grade1,"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible).",... with tracktype=grade1
+5144,track_grade2,,... with tracktype=grade2
+5145,track_grade3,,... with tracktype=grade3
+5146,track_grade4,,... with tracktype=grade4
+5147,track_grade5,,... with tracktype=grade5
+515x,Paths unsuitable for cars,,
+5151,bridleway,Paths for horse riding,highway=bridleway or highway=path with horse=designated
+5152,cycleway,Paths for cycling,highway=cycleway or highway=path with cycle=designated
+5153,footway,Footpaths,highway=footway or highway=path with foot=designated
+5154,path,Unspecified paths,highway=path without cycle/foot/horse=designated
+5155,steps,Flights of steps on footpaths,highway=steps
+,Unknown,,
+5199,unknown,Unknown type of road or path,highway=road
