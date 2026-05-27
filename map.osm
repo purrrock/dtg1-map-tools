@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+<osm version="0.6" generator="dtg1_cli_fuzzer">
+
+  <node id="3" lat="53.71425" lon="28.4119" version="1"/>
+  <node id="4" lat="53.71425" lon="28.4269" version="1"/>
+  <way id="5111" version="1">
+    <nd ref="3"/>
+    <nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="name" v="motorway (5111)"/>
+  </way>
+
+  <node id="5" lat="53.71375" lon="28.4119" version="1"/>
+  <node id="6" lat="53.71375" lon="28.4269" version="1"/>
+  <way id="5115" version="1">
+    <nd ref="5"/>
+    <nd ref="6"/>
+    <tag k="highway" v="tertiary"/>
+    <tag k="name" v="tertiary (5115)"/>
+  </way>
+
+  <node id="7" lat="53.713249" lon="28.4119" version="1"/>
+  <node id="8" lat="53.713249" lon="28.4269" version="1"/>
+  <way id="5113" version="1">
+    <nd ref="7"/>
+    <nd ref="8"/>
+    <tag k="highway" v="primary"/>
+    <tag k="name" v="primary (5113)"/>
+  </way>
+
+</osm>
