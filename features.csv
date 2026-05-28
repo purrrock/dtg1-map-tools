@@ -27,24 +27,24 @@ Code;fclass; Color; Display scale (meters);OSM Tags;Description
 5154;path; Thin Gray;20;highway=path without cycle/foot/horse=designated;Unspecified paths
 5155;steps; Thin Gray;20;highway=steps;Flights of steps on footpaths
 5199;unknown; Thin Gray;20;highway=road;Unknown type of road or path
-7201;forest;unknow;unknow;landuse=forest, natural=wood;A forest or woodland.
-7202;park;unknow;unknow;leisure=park, leisure=common;A park.
-7203;residential;unknow;unknow;landuse=residential;A residential area.
-7204;industrial;unknow;unknow;landuse=industrial;An industrial area.
-7206;cemetery;unknow;unknow;landuse=cemetery;A cemetery or graveyard.
-7207;allotments;unknow;unknow;landuse=allotments;An area with small private gardens.
-7208;meadow;unknow;unknow;landuse=meadow;A meadow
-7209;commercial;unknow;unknow;landuse=commercial;A commercial area.
-7210;nature_reserve;unknow;unknow;leisure=nature_reserve ;Nature reserves.
-7211;recreation_ground;unknow;unknow;leisure=recreation_ground or landuse_recreation_ground;An open green space for general recreation.
-7212;retail;unknow;unknow;landuse=retail;An area mainly used by shops.
-7213;military;unknow;unknow;landuse=military;Military landuse
-7214;quarry;unknow;unknow;landuse=quarry;A quarry.
-7215;orchard;unknow;unknow;landuse=orchard;An area used for growing fruit-bearing trees.
-7216;vineyard;unknow;unknow;landuse=vineyard;An area used for growing grapes.
-7217;scrub;unknow;unknow;landuse=scrub;An area where scrub grows.
-7218;grass;unknow;unknow;landuse=grass;An area where grass grows.
-7219;heath;unknow;unknow;natural=heath;Heath areas.
-7228;farmland;unknow;unknow;landuse=farmland;Agricultural land (areas where crops are grown)
-7229;farmyard;unknow;unknow;landuse=farmyard;Area of land with farm buildings and the shrubbery/trees around them.
-7233;landfill;unknow;unknow;landuse=landfill;A site for permanent or long term storage of waste materials.
+7201;forest;Green;500;landuse=forest, natural=wood;A forest or woodland.
+7202;park;Green;500;leisure=park, leisure=common;A park.
+7203;residential;Green;500;landuse=residential;A residential area.
+7204;industrial;Light green;500;landuse=industrial;An industrial area.
+7206;cemetery;Light green;500;landuse=cemetery;A cemetery or graveyard.
+7207;allotments;Light green;500;landuse=allotments;An area with small private gardens.
+7208;meadow;Light green;500;landuse=meadow;A meadow
+7209;commercial;Light green;500;landuse=commercial;A commercial area.
+7210;nature_reserve;Pink;500;leisure=nature_reserve ;Nature reserves.
+7211;recreation_ground;Light green;500;leisure=recreation_ground or landuse_recreation_ground;An open green space for general recreation.
+7212;retail;Light green;500;landuse=retail;An area mainly used by shops.
+7213;military;Light green;500;landuse=military;Military landuse
+7214;quarry;Light green;500;landuse=quarry;A quarry.
+7215;orchard;Light green;500;landuse=orchard;An area used for growing fruit-bearing trees.
+7216;vineyard;Light green;500;landuse=vineyard;An area used for growing grapes.
+7217;scrub;Light green;500;landuse=scrub;An area where scrub grows.
+7218;grass;Light green;500;landuse=grass;An area where grass grows.
+7219;heath;Light green;500;natural=heath;Heath areas.
+7228;farmland;Light brown;500;landuse=farmland;Agricultural land (areas where crops are grown)
+7229;farmyard;Light green;500;landuse=farmyard;Area of land with farm buildings and the shrubbery/trees around them.
+7233;landfill;Light green;500;landuse=landfill;A site for permanent or long term storage of waste materials.
