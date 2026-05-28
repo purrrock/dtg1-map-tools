@@ -11,6 +11,7 @@ DT G1 Monolithic Map Compiler (C175C1 Platform)
 import os
 import struct
 import xml.etree.ElementTree as ET
+import json
 
 # Константы формата YZL / SQT
 YZL_SIZE = 32
@@ -247,17 +248,75 @@ def compile_idx(meta_records, idx_out):
         
     print(f"    Успешно сохранен {idx_out} ({total_size} байт)")
 
+def create_map_name(name, meta_records, out_file="map.name"):
+    #Генерирует конфигурационный файл map.name с координатами центра карты.
+    #Прошивка использует его для первоначального позиционирования камеры при открытии приложения.
+    print(f"[>] Генерация {out_file}...")
+    if not meta_records:
+        print("    [-] Ошибка: Нет объектов для расчета центра карты.")
+        return
+
+    # Вычисляем экстремумы (Bounding Box) всей карты
+    minx = min(r["bbox"][0] for r in meta_records)
+    miny = min(r["bbox"][1] for r in meta_records)
+    maxx = max(r["bbox"][2] for r in meta_records)
+    maxy = max(r["bbox"][3] for r in meta_records)
+
+    # Вычисляем геометрический центр
+    center_lat = (miny + maxy) / 2.0
+    center_lon = (minx + maxx) / 2.0
+
+    # Записываем строго без пробелов, чтобы аппаратный парсер JSON в часах не сбоил
+    with open(out_file, "w", encoding="utf-8") as f:
+        json.dump(
+            {"centerLat": center_lat, "centerLon": center_lon, "mapName": name}, 
+            f, 
+            separators=(',', ':')
+        )
+    print(f"    Успешно сохранен {out_file} (Центр: {center_lat:.5f}, {center_lon:.5f})")
+
+
+def create_empty_layer(layer_prefix):
+    #Генерирует файлы-заглушки (.mlp, .db, .idx) для нереализованных слоев,
+    #чтобы предотвратить краш графического автомата прошивки DT G1.
+    print(f"[>] Генерация пустого слоя-заглушки: {layer_prefix}...")
+    
+    # 1. Пустой .mlp (Только 32 байта заголовка YZL)
+    mlp_out = f"{layer_prefix}.mlp"
+    with open(mlp_out, 'wb') as f:
+        # Сигнатура YZL + Размер файла (32) + 24 байта резерва
+        f.write(b'YZL\x00' + struct.pack("<I", 32) + b'\x00' * 24)
+        
+    # 2. Пустой .idx (YZL + 3 пустых секции LOD)
+    idx_out = f"{layer_prefix}.idx"
+    idx_buffer = bytearray()
+    for _ in range(3):
+        # Заголовок LOD + 8 нулевых байт терминатора
+        idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1) + b'\x00' * 8)
+        
+    with open(idx_out, "wb") as f:
+        total_size = 32 + len(idx_buffer)
+        f.write(b'YZL\x00' + struct.pack("<I", total_size) + b'\x00' * 24)
+        f.write(idx_buffer)
+        
+    # 3. Пустой .db 
+    # Мы переиспользуем существующую функцию compile_db. 
+    # Передача пустого массива [] заставит её сгенерировать 
+    # строго обязательную пустую Запись №0 (Record 0) и корректные заголовки.
+    compile_db([], f"{layer_prefix}.db")
+    
+    print(f"    Слой {layer_prefix} успешно заглушен.")
+
 # ==============================================================================
 # MAIN
 # ==============================================================================
-
 def main():
     if not os.path.exists("map.osm"):
         print("[-] Ошибка: Файл map.osm не найден в текущей папке.")
         return
         
     print("=========================================")
-    print("DT G1 MAP COMPILER (v4.0 - Multi-LOD)")
+    print("DT G1 MAP COMPILER (v4.1 - Multi-LOD & Dummies)")
     print("=========================================")
     
     ways = parse_osm_geometry("map.osm")
@@ -266,11 +325,20 @@ def main():
         print("[-] Ошибка: Не найдено валидных объектов для компиляции.")
         return
         
+    # 1. Компиляция дорожной сети (Базовый рабочий слой)
     meta_records = compile_mlp(ways, "roads.mlp")
     compile_db(meta_records, "roads.db")
     compile_idx(meta_records, "roads.idx")
     
-    print("\n[УСПЕХ] Сборка дорожной сети завершена!")
+    # 2. Генерация файла конфигурации (Используем meta_records от дорог для центрирования)
+    create_map_name("Custom_Map", meta_records, "map.name")
+    
+    # 3. Генерация пустых слоев-заглушек
+    create_empty_layer("landuse")
+    create_empty_layer("water")
+    # create_empty_layer("pois") # Раскомментируйте, если нужен слой POI
+    
+    print("\n[УСПЕХ] Пакет карт собран! Можно копировать файлы на часы.")
 
 if __name__ == "__main__":
     main()
