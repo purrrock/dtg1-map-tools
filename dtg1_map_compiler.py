@@ -129,12 +129,12 @@ def compile_mlp(ways, mlp_out):
         abs_offset += len(record_bin)
         record_number += 1
 
-    total_size = YZL_SIZE + len(bin_records)
+    payload_size = len(bin_records)
     with open(mlp_out, 'wb') as f:
-        f.write(b'YZL\x00' + struct.pack("<I", total_size) + b'\x00' * 24)
+        f.write(b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00' * 24)
         f.write(bin_records)
         
-    print(f"    Успешно сохранен {mlp_out} ({total_size} байт)")
+    print(f"    Успешно сохранен {mlp_out} ({payload_size} байт)")
     return meta_records
 
 # ==============================================================================
@@ -178,13 +178,13 @@ def compile_db(meta_records, db_out):
     dbf_header += make_dbf_descriptor("osm_id", 12) + make_dbf_descriptor("code", 4)
     dbf_header += make_dbf_descriptor("fclass", 28) + make_dbf_descriptor("name", 100) + b'\x0D'
     
-    total_size = YZL_SIZE + DBF_HEADER_LEN + len(bin_records)
+    payload_size = DBF_HEADER_LEN + len(bin_records)
     with open(db_out, 'wb') as f:
-        f.write(b'YZL\x00' + struct.pack('<I', total_size) + b'\x00' * 24)
+        f.write(b'YZL\x00' + struct.pack('<I', payload_size) + b'\x00' * 24)
         f.write(dbf_header)
         f.write(bin_records)
         
-    print(f"    Успешно сохранен {db_out} ({total_size} байт)")
+    print(f"    Успешно сохранен {db_out} ({payload_size} байт)")
 
 # ==============================================================================
 # ФАЗА 4: КОМПИЛЯЦИЯ .IDX (Многоуровневый SQT Индекс)
@@ -241,12 +241,12 @@ def compile_idx(meta_records, idx_out):
         idx_buffer.extend(b'\x00' * 8)
         print(f"    - LOD {lod_index}: упаковано объектов {len(lod_records)}")
     
-    total_size = YZL_SIZE + len(idx_buffer)
+    payload_size = len(idx_buffer)
     with open(idx_out, "wb") as f:
-        f.write(b'YZL\x00' + struct.pack("<I", total_size) + b'\x00' * 24)
+        f.write(b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00' * 24)
         f.write(idx_buffer)
         
-    print(f"    Успешно сохранен {idx_out} ({total_size} байт)")
+    print(f"    Успешно сохранен {idx_out} ({payload_size} байт)")
 
 def create_map_name(name, meta_records, out_file="map.name"):
     #Генерирует конфигурационный файл map.name с координатами центра карты.
@@ -275,37 +275,118 @@ def create_map_name(name, meta_records, out_file="map.name"):
         )
     print(f"    Успешно сохранен {out_file} (Центр: {center_lat:.5f}, {center_lon:.5f})")
 
+def generate_background_landuse(roads_meta):
+    """
+    Генерирует слой landuse, состоящий из одного большого полигона,
+    полностью накрывающего площадь всех дорог с запасом в 10%.
+    Используется для обхода аппаратной защиты от 'пустых карт'.
+    """
+    print("[>] Генерация фонового полигона (Landuse)...")
+    if not roads_meta:
+        print("    [-] Ошибка: Нет объектов дорог для расчета фона.")
+        return
+
+    # 1. Вычисляем Bounding Box всех дорог
+    minx = min(r["bbox"][0] for r in roads_meta)
+    miny = min(r["bbox"][1] for r in roads_meta)
+    maxx = max(r["bbox"][2] for r in roads_meta)
+    maxy = max(r["bbox"][3] for r in roads_meta)
+
+    # 2. Добавляем 10% margin, чтобы фон выходил за края экрана при скролле
+    margin_x = (maxx - minx) * 0.1 if (maxx - minx) > 0 else 0.01
+    margin_y = (maxy - miny) * 0.1 if (maxy - miny) > 0 else 0.01
+
+    minx -= margin_x
+    miny -= margin_y
+    maxx += margin_x
+    maxy += margin_y
+
+    # 3. Формируем Замкнутый Контур (Closed Ring)
+    # В бинарной геометрии полигон отличается от линии тем, 
+    # что его последняя координата строго равна первой.
+    bg_way = {
+        "osm_id": "0000000001",
+        "fclass": "meadow",
+        "code": 7208, # Код луга (Meadow) из features.csv
+        "name": "Background_Area",
+        "points": [
+            (minx, miny), # 1. Юго-Запад
+            (minx, maxy), # 2. Северо-Запад
+            (maxx, maxy), # 3. Северо-Восток
+            (maxx, miny), # 4. Юго-Восток
+            (minx, miny)  # 5. ВОЗВРАТ в Юго-Запад (Замыкание контура!)
+        ]
+    }
+
+    # 4. Модифицируем глобальную таблицу Z-Culling на лету
+    # Фон обязан отрисовываться на абсолютно всех масштабах от 1000м до 20м.
+    # Поэтому мы принудительно назначаем ему порог LOD 2 (1000м).
+    global DISPLAY_SCALES
+    DISPLAY_SCALES[7208] = 1000
+
+    # 5. Переиспользуем существующие компиляторы
+    # Наша архитектура настолько универсальна, что переварит простой полигон
+    # через ту же функцию, что и дороги (num_parts = 1).
+    bg_meta = compile_mlp([bg_way], "landuse.mlp")
+    compile_db(bg_meta, "landuse.db")
+    compile_idx(bg_meta, "landuse.idx")
+    
+    print("    Фоновый полигон успешно скомпилирован!")
 
 def create_empty_layer(layer_prefix):
-    #Генерирует файлы-заглушки (.mlp, .db, .idx) для нереализованных слоев,
-    #чтобы предотвратить краш графического автомата прошивки DT G1.
-    print(f"[>] Генерация пустого слоя-заглушки: {layer_prefix}...")
+    """
+    Генерирует файлы-заглушки (.mlp, .db, .idx) байт-в-байт совпадающие 
+    с оригинальными заводскими пустыми картами DT G1.
+    Это исключает ошибки EOF и проверки контрольных сумм в железе.
+    """
+    print(f"[>] Генерация эталонной заводской заглушки: {layer_prefix}...")
     
-    # 1. Пустой .mlp (Только 32 байта заголовка YZL)
-    mlp_out = f"{layer_prefix}.mlp"
-    with open(mlp_out, 'wb') as f:
-        # Сигнатура YZL + Размер файла (32) + 24 байта резерва
-        f.write(b'YZL\x00' + struct.pack("<I", 32) + b'\x00' * 24)
-        
-    # 2. Пустой .idx (YZL + 3 пустых секции LOD)
-    idx_out = f"{layer_prefix}.idx"
-    idx_buffer = bytearray()
-    for _ in range(3):
-        # Заголовок LOD + 8 нулевых байт терминатора
-        idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1) + b'\x00' * 8)
-        
-    with open(idx_out, "wb") as f:
-        total_size = 32 + len(idx_buffer)
-        f.write(b'YZL\x00' + struct.pack("<I", total_size) + b'\x00' * 24)
-        f.write(idx_buffer)
-        
-    # 3. Пустой .db 
-    # Мы переиспользуем существующую функцию compile_db. 
-    # Передача пустого массива [] заставит её сгенерировать 
-    # строго обязательную пустую Запись №0 (Record 0) и корректные заголовки.
-    compile_db([], f"{layer_prefix}.db")
+    # Заводской пустой .mlp (80 байт, Payload Size = 0)
+    # Содержит артефакты памяти (координаты Шэньчжэня)
+    mlp_hex = (
+        "595A4C00000000000000000400000000"
+        "D41D8CD98F00B204E9800998ECF8427E"
+        "A0B861411B1259427BD96D41FCD45A42"
+        "00000000000000000000000000000000"
+        "8BDDE3424F40B4418BDDE3424F40B441"
+    )
     
-    print(f"    Слой {layer_prefix} успешно заглушен.")
+    # Заводской пустой .idx (80 байт, Payload Size = 48)
+    # Сигнатура YZL\x10 + 3 пустых блока SQT
+    idx_hex = (
+        "595A4C10300000000000000400000010"
+        "E5F9D2228804251B5F9E3EAB298C30E5"
+        "53515401010000000000000000000000"
+        "53515401010000000000000000000000"
+        "53515401010000000000000000000000"
+    )
+    
+    # Заводской пустой .db (338 байт, Payload Size = 306)
+    # Заголовок dBase III + 1 пустая запись на 145 байт
+    db_hex = (
+        "595A4C00320100000000000400000000"
+        "D65E1C742D95963F147A4468DD25F93F"
+        "035F071A01000000A100910000000000"
+        "00000000000000000000000000000000"
+        "6F736D5F696400000000004300000000"
+        "0C000000000000000000000000000000"
+        "636F6465000000000000004E00000000"
+        "04000000000000000000000000000000"
+        "66636C61737300000000004300000000"
+        "1C000000000000000000000000000000"
+        "6E616D65000000000000004300000000"
+        "64000000000000000000000000000000"
+        "0D" + "00" * 145
+    )
+
+    with open(f"{layer_prefix}.mlp", "wb") as f:
+        f.write(bytearray.fromhex(mlp_hex))
+    with open(f"{layer_prefix}.idx", "wb") as f:
+        f.write(bytearray.fromhex(idx_hex))
+    with open(f"{layer_prefix}.db", "wb") as f:
+        f.write(bytearray.fromhex(db_hex))
+
+    print(f"    Слой {layer_prefix} успешно заменен на заводскую пустышку.")
 
 # ==============================================================================
 # MAIN
@@ -333,10 +414,11 @@ def main():
     # 2. Генерация файла конфигурации (Используем meta_records от дорог для центрирования)
     create_map_name("Custom_Map", meta_records, "map.name")
     
-    # 3. Генерация пустых слоев-заглушек
-    create_empty_layer("landuse")
+    # 3. Генерация слоев (Фон и пустышки)
+    generate_background_landuse(meta_records) # Генерируем реальный полигон
+    #create_empty_layer("landuse")
     create_empty_layer("water")
-    # create_empty_layer("pois") # Раскомментируйте, если нужен слой POI
+    create_empty_layer("pois") # Раскомментируйте, если нужен слой POI
     
     print("\n[УСПЕХ] Пакет карт собран! Можно копировать файлы на часы.")
 
