@@ -23,6 +23,7 @@ import os
 import struct
 import xml.etree.ElementTree as ET
 import json
+import hashlib
 
 # ==============================================================================
 # БИНАРНЫЕ КОНСТАНТЫ ПЛАТФОРМЫ C175C1
@@ -234,11 +235,20 @@ def compile_mlp(features, mlp_out):
         abs_offset += len(record_bin)
         record_number += 1
 
-    payload_size = len(bin_records)
+    payload = bin_records
+    payload_size = len(payload)
+    md5_hash = hashlib.md5(payload).digest() # Генерируем 16 байт MD5
+    # 0x00: Магическая сигнатура (4 байта)
+    # 0x04: Размер Payload в Little-Endian (4 байта)
+    # 0x08: Управляющий флаг в Big-Endian (4 байта)
+    # 0x0C: Нулевое выравнивание (4 байта)
+    # 0x10: MD5 хэш Payload (16 байт)
+    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
+    
     with open(mlp_out, 'wb') as f:
-        f.write(b'YZL\x00' + struct.pack("<I", payload_size) + b'\x04\x00\x00\x00' + b'\x00' * 20)
-        f.write(bin_records)
-        
+        f.write(header)
+        f.write(payload)
+       
     return meta_records
 
 def compile_db(meta_records, db_out):
@@ -268,10 +278,25 @@ def compile_db(meta_records, db_out):
     dbf_header += struct.pack('<H', DBF_HEADER_LEN) + struct.pack('<H', RECORD_LEN) + b'\x00' * 20
     dbf_header += desc("osm_id", 12) + desc("code", 4) + desc("fclass", 28) + desc("name", 100) + b'\x0D'
     
+    # 1. Формируем полную полезную нагрузку (Payload) файла .db
+    payload = dbf_header + bin_records
+    payload_size = len(payload)
+    
+    # 2. Вычисляем MD5-хэш от всей полезной нагрузки для обхода защиты прошивки
+    md5_hash = hashlib.md5(payload).digest()
+
+    # 3. Собираем 32-байтовый глобальный заголовок YZL:
+    # [0x00] b'YZL\x00' - Магическая сигнатура (4 байта)
+    # [0x04] struct.pack("<I", payload_size) - Размер Payload (Little-Endian, 4 байта)
+    # [0x08] b'\x00\x00\x00\x04' - Управляющий флаг полигонов (Big-Endian, 4 байта)
+    # [0x0C] b'\x00\x00\x00\x00' - Нулевое выравнивание (4 байта)
+    # [0x10] md5_hash - Контрольная сумма Payload (16 байт)
+    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
+    
+    # 4. Записываем в итоговый бинарник
     with open(db_out, 'wb') as f:
-        f.write(b'YZL\x00' + struct.pack('<I', DBF_HEADER_LEN + len(bin_records)) + b'\x04\x00\x00\x00' + b'\x00' * 20)
-        f.write(dbf_header)
-        f.write(bin_records)
+        f.write(header)
+        f.write(payload)
 
 class ClusterBlock:
     def __init__(self, data_nodes):
@@ -312,9 +337,25 @@ def compile_idx(meta_records, idx_out):
                 
         idx_buffer.extend(b'\x00' * 8)
     
+    #   1. Полезная нагрузка (Payload) для индексного файла
+    payload = idx_buffer
+    payload_size = len(payload)
+    
+    # 2. Вычисляем MD5-хэш от SQT-буфера для прохождения проверки прошивки
+    md5_hash = hashlib.md5(payload).digest()
+
+    # 3. Собираем 32-байтовый глобальный заголовок YZL:
+    # [0x00] b'YZL\x00' - Магическая сигнатура (4 байта)
+    # [0x04] struct.pack("<I", payload_size) - Размер Payload (Little-Endian, 4 байта)
+    # [0x08] b'\x00\x00\x00\x04' - Управляющий флаг полигонов (Big-Endian, 4 байта)
+    # [0x0C] b'\x00\x00\x00\x00' - Нулевое выравнивание (4 байта)
+    # [0x10] md5_hash - Контрольная сумма Payload (16 байт)
+    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
+    
+    # 4. Сохраняем итоговый бинарник
     with open(idx_out, "wb") as f:
-        f.write(b'YZL\x00' + struct.pack("<I", len(idx_buffer)) + b'\x04\x00\x00\x00' + b'\x00' * 20)
-        f.write(idx_buffer)
+        f.write(header)
+        f.write(payload)
 
 # ==============================================================================
 # ФАЗА 3: ВСПОМОГАТЕЛЬНЫЕ ГЕНЕРАТОРЫ И DUMMIES
