@@ -1,32 +1,32 @@
-Code;fclass; Color; Display scale (meters);Layer;OSM Tags;Description
-5111;motorway; Bold orange;1000;roads;highway=motorway;Motorway/freeway
-5112;trunk; Bold orange;1000;roads;highway=trunk;Important roads, typically divided
-5113;primary; SemiBold yellow;1000;roads;highway=primary;Primary roads, typically national.
-5114;secondary; Semibold yellow;1000;roads;highway=secondary;Secondary roads, typically regional.
-5115;tertiary; Thin gray;500;roads;highway=tertiary;Tertiary roads, typically local.
-5121;unclassified; Thin gray;100;roads;highway=unclassified;Smaller local roads
-5122;residential; Thin gray;100;roads;highway=residential;Roads in residential areas
-5123;living_street; Thin gray;100;roads;highway=living_street;Streets where pedestrians have priority
-5124;pedestrian; Thin gray;100;roads;highway=pedestrian;Pedestrian only streets
-5125;busway; Thin gray;100;roads;highway=busway;Dedicated roads for bus, usually closed for any mode of transport except public transport.
-5131;motorway_link; Bold orange;500;roads;highway=motorway_link;Roads that connect from one road to another of the same of lower category.
-5132;trunk_link; Bold orange;500;roads;highway=trunk_link;Roads that connect from one road to another of the same of lower category.
-5133;primary_link; SemiBold yellow;500;roads;highway=primary_link;Roads that connect from one road to another of the same of lower category.
-5134;secondary_link; SemiBold yellow;500;roads;highway=secondary_link;Roads that connect from one road to another of the same of lower category.
-5135;tertiary_link; Thin gray;500;roads;highway=tertiary_link;Roads that connect from one road to another of the same of lower category.
-5141;service; Thin gray;50;roads;highway=service;Service roads for access to buildings, parking lots, etc.
-5142;track; Thin Gray;50;roads;highway=track without tracktype specification;For agricultural use, in forests, etc. Often gravel roads.
-5143;track_grade1; Thin Gray;50;roads;... with tracktype=grade1;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
-5144;track_grade2; Thin Gray;50;roads;... with tracktype=grade2;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
-5145;track_grade3; Thin Gray;50;roads;... with tracktype=grade3;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
-5146;track_grade4; Thin Gray;50;roads;... with tracktype=grade4;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
-5147;track_grade5; Thin Gray;50;roads;... with tracktype=grade5;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
-5151;bridleway; Thin Gray;20;roads;highway=bridleway or highway=path with horse=designated;Paths for horse riding
-5152;cycleway; Thin Gray;20;roads;highway=cycleway or highway=path with cycle=designated;Paths for cycling
-5153;footway; Thin Gray;20;roads;highway=footway or highway=path with foot=designated;Footpaths
-5154;path; Thin Gray;20;roads;highway=path without cycle/foot/horse=designated;Unspecified paths
-5155;steps; Thin Gray;20;roads;highway=steps;Flights of steps on footpaths
-5199;unknown; Thin Gray;20;roads;highway=road;Unknown type of road or path
+Code;fclass;Color;Display_scale;Layer;OSM_Tags;Description
+5111;motorway;Bold orange;1000;roads;highway=motorway;Motorway/freeway
+5112;trunk;Bold orange;1000;roads;highway=trunk;Important roads, typically divided
+5113;primary;SemiBold yellow;1000;roads;highway=primary;Primary roads, typically national.
+5114;secondary;Semibold yellow;1000;roads;highway=secondary;Secondary roads, typically regional.
+5115;tertiary;Thin gray;500;roads;highway=tertiary;Tertiary roads, typically local.
+5121;unclassified;Thin gray;100;roads;highway=unclassified;Smaller local roads
+5122;residential;Thin gray;100;roads;highway=residential;Roads in residential areas
+5123;living_street;Thin gray;100;roads;highway=living_street;Streets where pedestrians have priority
+5124;pedestrian;Thin gray;100;roads;highway=pedestrian;Pedestrian only streets
+5125;busway;Thin gray;100;roads;highway=busway;Dedicated roads for bus, usually closed for any mode of transport except public transport.
+5131;motorway_link;Bold orange;500;roads;highway=motorway_link;Roads that connect from one road to another of the same of lower category.
+5132;trunk_link;Bold orange;500;roads;highway=trunk_link;Roads that connect from one road to another of the same of lower category.
+5133;primary_link;SemiBold yellow;500;roads;highway=primary_link;Roads that connect from one road to another of the same of lower category.
+5134;secondary_link;SemiBold yellow;500;roads;highway=secondary_link;Roads that connect from one road to another of the same of lower category.
+5135;tertiary_link;Thin gray;500;roads;highway=tertiary_link;Roads that connect from one road to another of the same of lower category.
+5141;service;Thin gray;50;roads;highway=service;Service roads for access to buildings, parking lots, etc.
+5142;track;Thin Gray;50;roads;highway=track without tracktype specification;For agricultural use, in forests, etc. Often gravel roads.
+5143;track_grade1;Thin Gray;50;roads;... with tracktype=grade1;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
+5144;track_grade2;Thin Gray;50;roads;... with tracktype=grade2;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
+5145;track_grade3;Thin Gray;50;roads;... with tracktype=grade3;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
+5146;track_grade4;Thin Gray;50;roads;... with tracktype=grade4;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
+5147;track_grade5;Thin Gray;50;roads;... with tracktype=grade5;"Tracks can be assigned a ""tracktype"" from 1 (asphalt or heavily compacted) to 5 (hardly visible)."
+5151;bridleway;Thin Gray;20;roads;highway=bridleway or highway=path with horse=designated;Paths for horse riding
+5152;cycleway;Thin Gray;20;roads;highway=cycleway or highway=path with cycle=designated;Paths for cycling
+5153;footway;Thin Gray;20;roads;highway=footway or highway=path with foot=designated;Footpaths
+5154;path;Thin Gray;20;roads;highway=path without cycle/foot/horse=designated;Unspecified paths
+5155;steps;Thin Gray;20;roads;highway=steps;Flights of steps on footpaths
+5199;unknown;Thin Gray;20;roads;highway=road;Unknown type of road or path
 7201;forest;Green;500;landuse;landuse=forest, natural=wood;A forest or woodland.
 7202;park;Green;500;landuse;leisure=park, leisure=common;A park.
 7203;residential;Green;500;landuse;landuse=residential;A residential area.
