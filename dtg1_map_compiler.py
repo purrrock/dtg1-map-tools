@@ -337,11 +337,12 @@ def compile_idx(meta_records, idx_out):
             
             # На каждый кластер выделяется 1 узел навигации + 1 заголовок + N узлов данных
             total_sqt_nodes += 2 + len(block.data_nodes) 
-        
+
             # Навигационный прыжок (v3) к следующему кластеру
             first = block.data_nodes[0]
             cluster_len = len(block.data_nodes) + 1
-            jump_v3 = (cluster_len * NODE_SIZE)
+            # Аппаратная поправка: +8 байт для компенсации Early-Exit чтения MinX/MinY
+            jump_v3 = (cluster_len * NODE_SIZE) + 8
             
             idx_buffer.extend(struct.pack("<IIIffff", first["v1"], first["v2"], jump_v3, *block.bbox))
             idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, *block.bbox, int(first["code"])))

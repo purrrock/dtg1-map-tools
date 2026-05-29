@@ -5,11 +5,6 @@
 DT G1 -> OSM XML Exporter (Hardware LUT Revision)
 ======================================================
 Инструмент декомпиляции бинарных карт C175C1 обратно в векторный формат OpenStreetMap.
-
-Исправления версии 2.0:
-  1. Hardware LUT: Полный отказ от строкового поля fclass для классификации. 
-     Теги восстанавливаются строго по аппаратному полю code (uint32) из SQT-индекса.
-  2. Demultiplexing: Точное восстановление составных тегов (tracktype).
 """
 
 import os
@@ -103,26 +98,81 @@ def get_or_create_node(lon, lat):
 # =========================================================
 
 def parse_db(path):
+    """
+    Динамический парсер dBase III. 
+    Автоматически читает Field Descriptors (схему), чтобы находить смещения колонок 
+    (защита от оптимизированных заводских баз данных, где вырезаны лишние поля).
+    """
     records = []
     if not path.exists(): return records
     with open(path, "rb") as f: data = f.read()
 
-    header_len = struct.unpack("<H", data[0x28:0x2A])[0]
-    record_len = struct.unpack("<H", data[0x2A:0x2C])[0]
+    db_base = YZL_SIZE # 32 байта глобального заголовка
+    
+    # Чтение длин из заголовка dBase III
+    header_len = struct.unpack("<H", data[db_base+8 : db_base+10])[0]
+    record_len = struct.unpack("<H", data[db_base+10 : db_base+12])[0]
+
     if record_len <= 1: return records
 
-    record_count = (len(data) - YZL_SIZE - header_len) // record_len
-    base = YZL_SIZE + header_len
+    # 1. Парсинг массива дескрипторов полей (Field Descriptors)
+    fields = []
+    offset = db_base + 32 # Дескрипторы всегда начинаются с 32-го байта заголовка dBase
+    current_record_offset = 1 # 1-й байт записи ВСЕГДА зарезервирован под флаг удаления (0x20 или 0x2A)
+
+    while offset < db_base + header_len:
+        if data[offset] == 0x0D: # 0x0D (CR) - Терминатор массива дескрипторов
+            break
+        
+        # Имя поля (до 10 символов, ASCII)
+        raw_name = data[offset : offset+11].split(b'\x00')[0]
+        field_name = raw_name.decode('ascii', errors='ignore').strip().lower()
+        
+        # Длина поля (uint8 по смещению 16)
+        field_len = data[offset+16]
+        
+        fields.append({
+            "name": field_name,
+            "start": current_record_offset,
+            "end": current_record_offset + field_len
+        })
+        current_record_offset += field_len
+        offset += 32
+
+    # 2. Чтение самих записей по динамическим смещениям
+    record_count = (len(data) - db_base - header_len) // record_len
+    records_start = db_base + header_len
 
     for i in range(record_count):
-        rec = data[base + i * record_len : base + (i + 1) * record_len]
-        if len(rec) != record_len or rec[0] == 0x2A:
+        rec = data[records_start + i*record_len : records_start + (i+1)*record_len]
+        if len(rec) != record_len or rec[0] == 0x2A: # 0x2A = удаленная/пустая запись
             records.append(None)
             continue
+
+        row_data = {}
+        for f in fields:
+            raw_val = rec[f["start"] : f["end"]].split(b'\x00')[0]
+            
+            # Мультиформатный декодер (UTF-8 -> Заводской китайский GBK -> CP1251)
+            try:
+                val = raw_val.decode('utf-8').strip()
+            except UnicodeDecodeError:
+                try:
+                    val = raw_val.decode('gbk').strip()
+                except UnicodeDecodeError:
+                    val = raw_val.decode('cp1251', errors='ignore').strip()
+            
+            row_data[f["name"]] = val
+
+        # В заводских картах поле имени может называться 'name', 'str' или 'label'
+        name_val = row_data.get("name", row_data.get("str", row_data.get("label", "")))
+        osm_id_val = row_data.get("osm_id", "")
+
         records.append({
-            "osm_id": decode_str(rec[1:13]),
-            "name": decode_str(rec[45:])
+            "osm_id": osm_id_val,
+            "name": name_val
         })
+
     return records
 
 def parse_idx(path):
