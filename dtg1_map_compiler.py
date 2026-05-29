@@ -45,8 +45,7 @@ RECORD_LEN = 145        # Фиксированная длина одной за�
 HIGHWAY_CODES = {
     "motorway": 5111, "trunk": 5112, "primary": 5113, "secondary": 5114, "tertiary": 5115,
     "unclassified": 5121, "residential": 5122, "living_street": 5123, "pedestrian": 5124, "busway": 5125,
-    "motorway_link": 5111, # ХАК: 5131 аппаратно не поддерживается, заменен на 5111
-    "trunk_link": 5132, "primary_link": 5133, "secondary_link": 5134, "tertiary_link": 5135,
+    "motorway_link": 5131,"trunk_link": 5132, "primary_link": 5133, "secondary_link": 5134, "tertiary_link": 5135,
     "service": 5141, "track": 5142, "track_grade1": 5143, "track_grade2": 5144, "track_grade3": 5145, 
     "track_grade4": 5146, "track_grade5": 5147, "bridleway": 5151, "cycleway": 5152, "footway": 5153,
     "path": 5154, "steps": 5155, "road": 5199, "unknown": 5199
@@ -131,6 +130,11 @@ def parse_osm_geometry(osm_file):
                 # Дороги (Направление вектора неважно)
                 if 'highway' in tags and len(points) >= 2:
                     fclass = tags['highway']
+                    
+                    # Инъекция суб-классификации для tracktype
+                    if fclass == 'track' and 'tracktype' in tags:
+                        fclass = fclass + '_' + tags['tracktype'] # дает "track_grade1"
+                        
                     roads.append({
                         "osm_id": osm_id, "fclass": fclass, 
                         "code": HIGHWAY_CODES.get(fclass, 5142), 
@@ -162,7 +166,12 @@ def parse_osm_geometry(osm_file):
                     name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
                     combined_points, parts, current_index = [], [], 0
                     
-                    for member in elem.findall('member'):
+                    # ИСПРАВЛЕНИЕ: Предварительно сортируем members: Outer всегда первыми
+                    members = elem.findall('member')
+                    outer_members = [m for m in members if m.attrib.get('role', 'outer') == 'outer']
+                    inner_members = [m for m in members if m.attrib.get('role', 'outer') == 'inner']
+                    
+                    for member in (outer_members + inner_members):
                         if member.attrib.get('type') == 'way':
                             ref = member.attrib['ref']
                             role = member.attrib.get('role', 'outer')
@@ -310,6 +319,8 @@ def compile_idx(meta_records, idx_out):
     """Многоуровневый компилятор SQT-индекса (Плоский список)."""
     print(f"[>] Компиляция индекса SQT: {idx_out}...")
     idx_buffer = bytearray()
+    total_sqt_nodes = 0 # Инициализируем счетчик узлов
+    
     lod_filters = [
         lambda c: True,
         lambda c: DISPLAY_SCALES.get(c, 20) >= 100,
@@ -324,6 +335,9 @@ def compile_idx(meta_records, idx_out):
         for block in blocks:
             if not block.data_nodes: continue
             
+            # На каждый кластер выделяется 1 узел навигации + 1 заголовок + N узлов данных
+            total_sqt_nodes += 2 + len(block.data_nodes) 
+        
             # Навигационный прыжок (v3) к следующему кластеру
             first = block.data_nodes[0]
             cluster_len = len(block.data_nodes) + 1
@@ -348,10 +362,11 @@ def compile_idx(meta_records, idx_out):
     # [0x00] b'YZL\x00' - Магическая сигнатура (4 байта)
     # [0x04] struct.pack("<I", payload_size) - Размер Payload (Little-Endian, 4 байта)
     # [0x08] b'\x00\x00\x00\x04' - (Big-Endian, 4 байта)
-    # [0x0C] b'\x00\x00\x00\x00' - Нулевое выравнивание (4 байта)
+    # [0x0C] total_sqt_nodes
     # [0x10] md5_hash - Контрольная сумма Payload (16 байт)
-    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
-    
+
+    # Пакуем total_sqt_nodes в >I (Big-Endian) по смещению 0x0C
+    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04' + struct.pack(">I", total_sqt_nodes) + md5_hash
     # 4. Сохраняем итоговый бинарник
     with open(idx_out, "wb") as f:
         f.write(header)
