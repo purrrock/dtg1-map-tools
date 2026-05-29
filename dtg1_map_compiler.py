@@ -236,8 +236,7 @@ def compile_mlp(features, mlp_out):
 
     payload_size = len(bin_records)
     with open(mlp_out, 'wb') as f:
-        # Внимание: Скрытый системный байт выравнивания \x00\x00\x00\x04
-        f.write(b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04' + b'\x00' * 20)
+        f.write(b'YZL\x00' + struct.pack("<I", payload_size) + b'\x04\x00\x00\x00' + b'\x00' * 20)
         f.write(bin_records)
         
     return meta_records
@@ -270,7 +269,7 @@ def compile_db(meta_records, db_out):
     dbf_header += desc("osm_id", 12) + desc("code", 4) + desc("fclass", 28) + desc("name", 100) + b'\x0D'
     
     with open(db_out, 'wb') as f:
-        f.write(b'YZL\x00' + struct.pack('<I', DBF_HEADER_LEN + len(bin_records)) + b'\x00\x00\x00\x04' + b'\x00' * 20)
+        f.write(b'YZL\x00' + struct.pack('<I', DBF_HEADER_LEN + len(bin_records)) + b'\x04\x00\x00\x00' + b'\x00' * 20)
         f.write(dbf_header)
         f.write(bin_records)
 
@@ -303,7 +302,7 @@ def compile_idx(meta_records, idx_out):
             # Навигационный прыжок (v3) к следующему кластеру
             first = block.data_nodes[0]
             cluster_len = len(block.data_nodes) + 1
-            jump_v3 = (cluster_len * NODE_SIZE) + 8 
+            jump_v3 = (cluster_len * NODE_SIZE)
             
             idx_buffer.extend(struct.pack("<IIIffff", first["v1"], first["v2"], jump_v3, *block.bbox))
             idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, *block.bbox, int(first["code"])))
@@ -314,7 +313,7 @@ def compile_idx(meta_records, idx_out):
         idx_buffer.extend(b'\x00' * 8)
     
     with open(idx_out, "wb") as f:
-        f.write(b'YZL\x00' + struct.pack("<I", len(idx_buffer)) + b'\x00\x00\x00\x04' + b'\x00' * 20)
+        f.write(b'YZL\x00' + struct.pack("<I", len(idx_buffer)) + b'\x04\x00\x00\x00' + b'\x00' * 20)
         f.write(idx_buffer)
 
 # ==============================================================================
