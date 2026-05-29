@@ -240,7 +240,7 @@ def compile_mlp(features, mlp_out):
     md5_hash = hashlib.md5(payload).digest() # Генерируем 16 байт MD5
     # 0x00: Магическая сигнатура (4 байта)
     # 0x04: Размер Payload в Little-Endian (4 байта)
-    # 0x08: Управляющий флаг в Big-Endian (4 байта)
+    # 0x08: флаг в Big-Endian (4 байта)
     # 0x0C: Нулевое выравнивание (4 байта)
     # 0x10: MD5 хэш Payload (16 байт)
     header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
@@ -288,7 +288,7 @@ def compile_db(meta_records, db_out):
     # 3. Собираем 32-байтовый глобальный заголовок YZL:
     # [0x00] b'YZL\x00' - Магическая сигнатура (4 байта)
     # [0x04] struct.pack("<I", payload_size) - Размер Payload (Little-Endian, 4 байта)
-    # [0x08] b'\x00\x00\x00\x04' - Управляющий флаг полигонов (Big-Endian, 4 байта)
+    # [0x08] b'\x00\x00\x00\x04' - (Big-Endian, 4 байта)
     # [0x0C] b'\x00\x00\x00\x00' - Нулевое выравнивание (4 байта)
     # [0x10] md5_hash - Контрольная сумма Payload (16 байт)
     header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
@@ -347,7 +347,7 @@ def compile_idx(meta_records, idx_out):
     # 3. Собираем 32-байтовый глобальный заголовок YZL:
     # [0x00] b'YZL\x00' - Магическая сигнатура (4 байта)
     # [0x04] struct.pack("<I", payload_size) - Размер Payload (Little-Endian, 4 байта)
-    # [0x08] b'\x00\x00\x00\x04' - Управляющий флаг полигонов (Big-Endian, 4 байта)
+    # [0x08] b'\x00\x00\x00\x04' - (Big-Endian, 4 байта)
     # [0x0C] b'\x00\x00\x00\x00' - Нулевое выравнивание (4 байта)
     # [0x10] md5_hash - Контрольная сумма Payload (16 байт)
     header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
