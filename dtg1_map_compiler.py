@@ -31,8 +31,7 @@ import hashlib
 YZL_SIZE = 32           # Размер глобального заголовка YZL (включая скрытые флаги)
 SQT_HEADER_SIZE = 8     # Размер заголовка секции LOD (SQT\x01...)
 NODE_SIZE = 28          # Размер одного узла данных в SQT
-CHUNK_SIZE = 15         # Лимит объектов в одном плоском кластере (размер буфера часов)
-
+CHUNK_SIZE = 14         # Лимит объектов в одном плоском кластере (размер буфера часов) Строго 14 (1 Nav + 1 Head + 14 Data = 16 узлов / 448 байт)
 DBF_HEADER_LEN = 161    # Фиксированный размер заголовка dBase III 
 RECORD_LEN = 145        # Фиксированная длина одной записи атрибутов
 
@@ -332,7 +331,7 @@ def compile_idx(meta_records, idx_out):
         idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1))
         
         blocks = [ClusterBlock(lod_records[i:i+CHUNK_SIZE]) for i in range(0, len(lod_records), CHUNK_SIZE)]
-        for block in blocks:
+        for block_idx, block in enumerate(blocks):
             if not block.data_nodes: continue
             
             # На каждый кластер выделяется 1 узел навигации + 1 заголовок + N узлов данных
@@ -344,7 +343,12 @@ def compile_idx(meta_records, idx_out):
             # Аппаратная поправка: +8 байт для компенсации Early-Exit чтения MinX/MinY
             jump_v3 = (cluster_len * NODE_SIZE) + 8
             
-            idx_buffer.extend(struct.pack("<IIIffff", first["v1"], first["v2"], jump_v3, *block.bbox))
+            # ВАЖНО: Аппаратный флаг Root Node (v2). 
+            # Для первого кластера в LOD записываем ОБЩЕЕ количество кластеров. Для остальных: 1.
+            nav_v2 = len(blocks) if block_idx == 0 else 1
+            
+            # Узел Навигации (Nav Node). Передаем nav_v2 вместо first["v2"]
+            idx_buffer.extend(struct.pack("<IIIffff", first["v1"], nav_v2, jump_v3, *block.bbox))
             idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, *block.bbox, int(first["code"])))
             
             for d in block.data_nodes:
