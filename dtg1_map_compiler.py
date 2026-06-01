@@ -4,7 +4,7 @@
 """
 DT G1 Monolithic Map Compiler (Platform C175C1)
 ===============================================
-Финальная версия компилятора векторных данных OpenStreetMap (OSM) 
+Компилятор векторных данных OpenStreetMap (OSM) 
 в закрытые бинарные форматы смарт-часов DT NO.1 G1 (.mlp, .idx, .db).
 
 Архитектурные особенности движка:
@@ -325,8 +325,11 @@ def compile_idx(meta_records, idx_out):
         lambda c: DISPLAY_SCALES.get(c, 20) >= 100,
         lambda c: DISPLAY_SCALES.get(c, 20) >= 1000
     ]
-
+    
+    lod2_size = 0
     for lod_index, condition in enumerate(lod_filters):
+        start_len = len(idx_buffer)  # Фиксация смещения начала текущей секции LOD
+        
         lod_records = [r for r in meta_records if condition(r["code"])]
         idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1))
         
@@ -334,27 +337,26 @@ def compile_idx(meta_records, idx_out):
         for block_idx, block in enumerate(blocks):
             if not block.data_nodes: continue
             
-            # На каждый кластер выделяется 1 узел навигации + 1 заголовок + N узлов данных
             total_sqt_nodes += 2 + len(block.data_nodes) 
-
-            # Навигационный прыжок (v3) к следующему кластеру
             first = block.data_nodes[0]
             cluster_len = len(block.data_nodes) + 1
-            # Аппаратная поправка: +8 байт для компенсации Early-Exit чтения MinX/MinY
             jump_v3 = (cluster_len * NODE_SIZE) + 8
             
-            # ВАЖНО: Аппаратный флаг Root Node (v2). 
-            # Для первого кластера в LOD записываем ОБЩЕЕ количество кластеров. Для остальных: 1.
             nav_v2 = len(blocks) if block_idx == 0 else 1
             
-            # Узел Навигации (Nav Node). Передаем nav_v2 вместо first["v2"]
             idx_buffer.extend(struct.pack("<IIIffff", first["v1"], nav_v2, jump_v3, *block.bbox))
             idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, *block.bbox, int(first["code"])))
             
             for d in block.data_nodes:
                 idx_buffer.extend(struct.pack("<IIffffI", d["v1"], d["v2"], *d["bbox"], int(d["code"])))
-                
-        idx_buffer.extend(b'\x00' * 8)
+
+        # Аппаратный терминатор секции (Dummy Data Node). 
+        v1_safe = lod_records[-1]["v1"] if lod_records else 0
+        idx_buffer.extend(struct.pack("<II", v1_safe, 1))
+
+        # Расчет размера секции LOD 2 (строго после записи терминатора)
+        if lod_index == 2:
+            lod2_size = len(idx_buffer) - start_len
     
     #   1. Полезная нагрузка (Payload) для индексного файла
     payload = idx_buffer
@@ -371,7 +373,7 @@ def compile_idx(meta_records, idx_out):
     # [0x10] md5_hash - Контрольная сумма Payload (16 байт)
 
     # Пакуем total_sqt_nodes в >I (Big-Endian) по смещению 0x0C
-    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04' + struct.pack(">I", total_sqt_nodes) + md5_hash
+    header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04' + struct.pack(">I", lod2_size) + md5_hash
     # 4. Сохраняем итоговый бинарник
     with open(idx_out, "wb") as f:
         f.write(header)
