@@ -4,7 +4,7 @@
 """
 DT G1 Map Compiler (Platform C175C1)
 ===============================================
-Рефакторинг v2.0 (Strict OOP & Typed)
+v2.0 (Strict OOP & Typed)
 Компилятор векторных данных OpenStreetMap (OSM) в закрытые бинарные форматы
 смарт-часов DT NO.1 G1 (.mlp, .idx, .db).
 
@@ -408,19 +408,23 @@ class MapCompiler:
                     
                     idx_buffer.extend(struct.pack("<IIIffff", nav_v1, nav_v2, jump_v3, c_minx, c_miny, c_maxx, c_maxy))
                 
-                # Запись Заголовка Кластера
-                idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, c_minx, c_miny, c_maxx, c_maxy, cluster[0].code))
+                # Запись Заголовка Кластера (Cluster Header)
+                # Поле v1=0 аппаратно переключает стейт-машину в пакетный режим чтения узлов данных.
+                # Структуры BBox и Code здесь полностью игнорируются прошивкой. В заводских картах 
+                # сюда попадал случайный мусор из оперативной памяти компилятора.
+                # Записываем нули.
+                idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, 0.0, 0.0, 0.0, 0.0, 0))
                 
                 # Запись Узлов Данных
                 for f in cluster:
                     idx_buffer.extend(struct.pack("<IIffffI", f.v1, f.v2, *f.bbox, f.code))
 
-            # Безопасный терминатор секции для избежания Underflow
-            if lod_records:
-                last_rec = lod_records[-1]
-                idx_buffer.extend(struct.pack("<II", last_rec.v1, last_rec.v2))
-            else:
-                idx_buffer.extend(struct.pack("<II", 0, 1))
+            # РЕВЕРС-ИНЖИНИРИНГ V3.2: Блок 8-байтового "терминатора" удален.
+            # Анализ аппаратного парсера доказал, что стейт-машина завершает чтение кластера,
+            # опираясь строго на счетчики (Кол-во кластеров LOD -> Кол-во узлов внутри кластера),
+            # либо по маркеру `SQT\x01` следующего слоя. 
+            # Огрызок v1/v2 в конце заводских файлов был следствием грубого прерывания (break) 
+            # цикла компилятора без очистки буфера. Эмуляция этого бага нам не нужна.
 
             if lod_index == 2:
                 lod2_size = len(idx_buffer) - start_len
