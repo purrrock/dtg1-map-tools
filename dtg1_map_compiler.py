@@ -363,9 +363,10 @@ class MapCompiler:
         idx_buffer = bytearray()
         
         # 3 уровня детализации
+        # ИСПРАВЛЕНИЕ 1: Порог отсечения для LOD 1 изменен со 100 до 500 метров
         lod_filters = [
             lambda c: True,
-            lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 100,
+            lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500, 
             lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 1000
         ]
         
@@ -380,6 +381,18 @@ class MapCompiler:
             # Разбивка на плоские кластеры (по CHUNK_SIZE объектов)
             clusters = [lod_records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(lod_records), HWConfig.CHUNK_SIZE)]
             
+            # ---------------------------------------------------------
+            # ИСПРАВЛЕНИЕ 2: Защита от EOF Panic аппаратного парсера.
+            # Если уровень детализации пуст, записываем 8 байт нулей.
+            # ---------------------------------------------------------
+            if not clusters:
+                idx_buffer.extend(b'\x00' * 8) # Аппаратное выравнивание
+                if lod_index == 2:
+                    # Принудительно фиксируем размер LOD 2 перед continue (всегда 16 байт: 4+4+8)
+                    lod2_size = len(idx_buffer) - start_len
+                continue
+            # ---------------------------------------------------------
+
             # Флаг одиночного кластера для применения аппаратного правила Omission
             is_single_cluster = len(clusters) == 1
             
