@@ -380,6 +380,9 @@ class MapCompiler:
             # Разбивка на плоские кластеры (по CHUNK_SIZE объектов)
             clusters = [lod_records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(lod_records), HWConfig.CHUNK_SIZE)]
             
+            # Флаг одиночного кластера для применения аппаратного правила Omission
+            is_single_cluster = len(clusters) == 1
+            
             for cluster_idx, cluster in enumerate(clusters):
                 if not cluster: continue
                 
@@ -390,21 +393,25 @@ class MapCompiler:
                 c_maxy = max(f.bbox[3] for f in cluster)
                 
                 cluster_len = len(cluster) + 1
-                jump_v3 = (cluster_len * HWConfig.NODE_SIZE) + 8 # +8 байт компенсации Early Exit
                 
-                # Расчет Узла Навигации (Nav Node)
-                if cluster_idx == 0:
-                    nav_v1 = 1  # Root Node
-                    nav_v2 = len(clusters)
-                else:
-                    last_prev = clusters[cluster_idx - 1][-1]
-                    nav_v1 = last_prev.v1 + last_prev.mlp_size
-                    nav_v2 = 1
+                # Запись Узла Навигации (Nav Node) - ТОЛЬКО если кластеров больше одного
+                if not is_single_cluster:
+                    jump_v3 = (cluster_len * HWConfig.NODE_SIZE) + 8 # +8 байт компенсации Early Exit
+                    
+                    if cluster_idx == 0:
+                        nav_v1 = 1  # Root Node
+                        nav_v2 = len(clusters)
+                    else:
+                        last_prev = clusters[cluster_idx - 1][-1]
+                        nav_v1 = last_prev.v1 + last_prev.mlp_size
+                        nav_v2 = 1
+                    
+                    idx_buffer.extend(struct.pack("<IIIffff", nav_v1, nav_v2, jump_v3, c_minx, c_miny, c_maxx, c_maxy))
                 
-                # Запись [Узел Навигации] -> [Заголовок Кластера] -> [N Узлов Данных]
-                idx_buffer.extend(struct.pack("<IIIffff", nav_v1, nav_v2, jump_v3, c_minx, c_miny, c_maxx, c_maxy))
+                # Запись Заголовка Кластера
                 idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, c_minx, c_miny, c_maxx, c_maxy, cluster[0].code))
                 
+                # Запись Узлов Данных
                 for f in cluster:
                     idx_buffer.extend(struct.pack("<IIffffI", f.v1, f.v2, *f.bbox, f.code))
 
