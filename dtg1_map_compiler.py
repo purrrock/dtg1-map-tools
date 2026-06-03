@@ -4,7 +4,7 @@
 """
 DT G1 Map Compiler (Platform ATS3085S)
 ===============================================
-v2.0 (Strict OOP & Typed)
+v2.1 (Strict OOP, Typed & C-Union Patched)
 Компилятор векторных данных OpenStreetMap (OSM) в закрытые бинарные форматы
 смарт-часов DT NO.1 G1 (.mlp, .idx, .db).
 
@@ -13,6 +13,10 @@ v2.0 (Strict OOP & Typed)
   2. Non-Zero Winding Rule: Внутренние контуры полигонов - CCW, внешние - CW.
   3. Z-Culling (LOD): Аппаратное скрытие объектов по 3 уровням детализации.
   4. System Dummies: Hex-пустышки (Payload Size = 0) для обхода EOF-защиты прошивки.
+  5. C-Union Node Architecture: Навигационные узлы и узлы данных занимают строго 28 байт, 
+     разделяя общие смещения для указателей памяти v1 и v2 (паттерн языка C - union).
+  6. LOD Mode Switch: Динамическая поддержка режимов Clustered (0x01) и Flat List (0x00) 
+     для экономии памяти при малом количестве объектов в слое.
 """
 
 import os
@@ -31,7 +35,7 @@ from typing import List, Tuple, Dict, Optional
 class HWConfig:
     """Аппаратные константы платформы ATS3085S"""
     YZL_HEADER_SIZE = 32
-    NODE_SIZE = 28
+    NODE_SIZE = 28           # Унифицированный размер узла (как Data Node, так и Nav Node)
     CHUNK_SIZE = 14          # Максимум объектов в кластере (ограничение буфера)
     DBF_HEADER_LEN = 161     # dBase III Fixed Header
     DBF_RECORD_LEN = 145     # dBase III Fixed Record
@@ -97,6 +101,19 @@ class MapFeature:
         maxx = max(p[0] for p in self.points)
         maxy = max(p[1] for p in self.points)
         self.bbox = (minx, miny, maxx, maxy)
+
+    def pack_data_node(self, v1: int, v2: int) -> bytes:
+        """
+        Упаковка Узла Данных (Data Node). Строго 28 байт.
+        Формат (C-Union): [BBox 16b] [Type 4b] [v1 4b] [v2 4b]
+        Смещение +20 и +24 зарезервировано для универсального чтения ссылок парсером.
+        """
+        return struct.pack(
+            "<ffffIII", 
+            self.bbox[0], self.bbox[1], self.bbox[2], self.bbox[3], 
+            self.code, 
+            v1, v2
+        )
 
 
 # ==============================================================================
@@ -268,14 +285,14 @@ class MapCompiler:
     def _write_yzl_container(filepath: str, payload: bytes, is_idx: bool, lod2_size: int = 0) -> None:
         """
         Инкапсулирует полезную нагрузку в глобальный 32-байтовый контейнер YZL.
-        Строго соблюдает спецификацию C175C1 для MD5 хэширования и сигнатур.
         """
         payload_size = len(payload)
         md5_hash = hashlib.md5(payload).digest()
         
         if is_idx:
-            # Специфичный заголовок для .idx (флаги 0x0C и 0x01)
-            header = b'YZL\x0C' + struct.pack("<I", payload_size) + b'\x01\x00\x00\x04' + struct.pack(">I", lod2_size) + md5_hash
+            # Специфичный заголовок для .idx: 
+            # Магическая сигнатура YZL\x08, флаг маппинга памяти 0x02 (заводские значения).
+            header = b'YZL\x08' + struct.pack("<I", payload_size) + b'\x02\x00\x00\x04' + struct.pack(">I", lod2_size) + md5_hash
         else:
             # Стандартный заголовок для геометрии и БД
             header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
@@ -283,6 +300,20 @@ class MapCompiler:
         with open(filepath, 'wb') as f:
             f.write(header)
             f.write(payload)
+
+    @staticmethod
+    def pack_nav_node(v3_jump: int, bbox: Tuple[float, float, float, float], v1: int, v2_count: int) -> bytes:
+        """
+        Упаковка Навигационного Узла (Nav Node). Строго 28 байт.
+        Формат (C-Union): [v3_jump 4b] [BBox 16b] [v1 4b] [v2 4b]
+        Совпадает по размеру с Data Node. Смещение +20 и +24 зарезервировано для v1/v2.
+        """
+        return struct.pack(
+            "<IffffII", 
+            v3_jump, 
+            bbox[0], bbox[1], bbox[2], bbox[3], 
+            v1, v2_count
+        )
 
     @classmethod
     def compile_mlp(cls, features: List[MapFeature], filepath: str) -> None:
@@ -379,59 +410,66 @@ class MapCompiler:
             lod_records = [f for f in features if condition(f.code)]
             
             # Маркер начала SQT
-            idx_buffer.extend(b'SQT\x01' + struct.pack("<I", 1))
+            idx_buffer.extend(b'SQT\x01')
+            idx_buffer.extend(b'\x00' * 4) # Зарезервировано (Unknown)
             
+            # Защита от EOF Panic. Узлы пишутся вплотную к маркеру SQT.
+            # ОШИБКА старой спеки: аппаратного выравнивания (padding) для пустых слоев НЕ требуется.
+            # Пишем только переключатель Mode=0 и Count=0.
+            if not lod_records:
+                idx_buffer.extend(struct.pack("<II", 0, 0))
+                if lod_index == 2:
+                    # Принудительно фиксируем размер LOD 2 перед continue
+                    lod2_size = len(idx_buffer) - start_len
+                continue
+
             # Разбивка на плоские кластеры (по CHUNK_SIZE объектов)
             clusters = [lod_records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(lod_records), HWConfig.CHUNK_SIZE)]
             
-            # Защита от EOF Panic аппаратного парсера.
-            # Если уровень детализации пуст, записываем 8 байт нулей.
-            if not clusters:
-                idx_buffer.extend(b'\x00' * 8) # Аппаратное выравнивание
-                if lod_index == 2:
-                    # Принудительно фиксируем размер LOD 2 перед continue (всегда 16 байт: 4+4+8)
-                    lod2_size = len(idx_buffer) - start_len
-                continue
-            # ---------------------------------------------------------
-
-            # Флаг одиночного кластера для применения аппаратного правила Omission
-            is_single_cluster = len(clusters) == 1
+            # Определяем режим обхода: если кластеров больше 1, включается Clustered Mode,
+            # иначе для экономии ресурсов переключаемся в Flat List Mode (сплошной массив Data узлов).
+            is_clustered = len(clusters) > 1
             
-            for cluster_idx, cluster in enumerate(clusters):
-                if not cluster: continue
+            if is_clustered:
+                mode = 1
+                count = len(clusters)
+                idx_buffer.extend(struct.pack("<II", mode, count))
                 
-                # Вычисление общего BBox для кластера
-                c_minx = min(f.bbox[0] for f in cluster)
-                c_miny = min(f.bbox[1] for f in cluster)
-                c_maxx = max(f.bbox[2] for f in cluster)
-                c_maxy = max(f.bbox[3] for f in cluster)
-                
-                cluster_len = len(cluster) + 1
-                
-                # Запись Узла Навигации (Nav Node) - ТОЛЬКО если кластеров больше одного
-                if not is_single_cluster:
-                    jump_v3 = (cluster_len * HWConfig.NODE_SIZE) + 8 # +8 байт компенсации Early Exit
+                for cluster_idx, cluster in enumerate(clusters):
+                    if not cluster: continue
                     
-                    if cluster_idx == 0:
-                        nav_v1 = 1  # Root Node
-                        nav_v2 = len(clusters)
-                    else:
-                        last_prev = clusters[cluster_idx - 1][-1]
-                        nav_v1 = last_prev.v1 + last_prev.mlp_size
-                        nav_v2 = 1
+                    # Вычисление общего BBox для текущего кластера
+                    c_minx = min(f.bbox[0] for f in cluster)
+                    c_miny = min(f.bbox[1] for f in cluster)
+                    c_maxx = max(f.bbox[2] for f in cluster)
+                    c_maxy = max(f.bbox[3] for f in cluster)
                     
-                    idx_buffer.extend(struct.pack("<IIIffff", nav_v1, nav_v2, jump_v3, c_minx, c_miny, c_maxx, c_maxy))
+                    # Формула прыжка v3 требует аппаратной компенсации +8 байт 
+                    # для корректного указания на смещение СЛЕДУЮЩЕГО Nav Node в конвейере прошивки.
+                    v3_jump = (len(cluster) * HWConfig.NODE_SIZE) + 8 
+                    
+                    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Согласно паттерну C-Union, последние 8 байт 
+                    # навигационного узла интерпретируются парсером как управляющие линки:
+                    # v1 — всегда аппаратный ноль (маркер Nav-типа для внутренней стейт-машины).
+                    # v2 — строго количество Data Nodes внутри данного конкретного кластера.
+                    nav_v1 = 0
+                    nav_v2 = len(cluster)
+                    
+                    # Запись Узла Навигации (Nav Node)
+                    idx_buffer.extend(cls.pack_nav_node(v3_jump, (c_minx, c_miny, c_maxx, c_maxy), nav_v1, nav_v2))                    
+                    # Запись Узлов Данных (Data Nodes)
+                    for f in cluster:
+                        idx_buffer.extend(f.pack_data_node(f.v1, f.v2))
+            
+            else:
+                mode = 0
+                flat_objects = clusters[0] if clusters else []
+                count = len(flat_objects)
+                idx_buffer.extend(struct.pack("<II", mode, count))
                 
-                # Запись Заголовка Кластера (Cluster Header)
-                # Поле v1=0 аппаратно переключает стейт-машину в пакетный режим чтения узлов данных.
-                # Структуры BBox и Code здесь полностью игнорируются прошивкой. В заводских картах 
-                # сюда попадал случайный мусор из оперативной памяти компилятора.
-                # Записываем нули.
-                idx_buffer.extend(struct.pack("<IIffffI", 0, cluster_len, 0.0, 0.0, 0.0, 0.0, 0))
-                
-                # Запись Узлов Данных
-                for f in cluster:
-                    idx_buffer.extend(struct.pack("<IIffffI", f.v1, f.v2, *f.bbox, f.code))
+                # В режиме Flat List пишем только Data Nodes сплошным массивом (Nav Nodes отбрасываются)
+                for f in flat_objects:
+                    idx_buffer.extend(f.pack_data_node(f.v1, f.v2))
    
             if lod_index == 2:
                 lod2_size = len(idx_buffer) - start_len
