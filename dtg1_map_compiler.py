@@ -57,7 +57,17 @@ class LookupTables:
         "nature_reserve": 7210, "recreation_ground": 7211, "retail": 7212,
         "military": 7213, "quarry": 7214, "orchard": 7215, "vineyard": 7216, "scrub": 7217,
         "grass": 7218, "heath": 7219, "farmland": 7228, "farmyard": 7229, "landfill": 7233,
-        "water": 8200
+        # ПРИНУДИТЕЛЬНЫЙ ДАУНСЕМПЛИНГ ГИДРОЛОГИИ
+        # Все водные объекты принудительно маппятся в код 8200 
+        # (код, аппаратно подтвержденный для natural=water)
+        'water': 8200,
+        'riverbank': 8200,
+        'reservoir': 8200,
+        'basin': 8200,
+        'wetland': 8200,
+        'glacier': 8200,
+        'bay': 8200,
+        'dock': 8200
     }
 
     # Пороги Z-Culling (масштаб появления объекта на экране часов в метрах)
@@ -70,7 +80,7 @@ class LookupTables:
         7201: 500,  7202: 500,  7203: 500,  7204: 500,  7206: 500,  7207: 500,  7208: 500,  
         7209: 500,  7210: 500,  7211: 500,  7212: 500,  7213: 500,  7214: 500,  7215: 500,  
         7216: 500,  7217: 500,  7218: 500,  7219: 500,  7228: 500,  7229: 500,  7233: 500,
-        8200: 500
+        8200: 1000
     }
 
 
@@ -526,8 +536,11 @@ def main():
         MapCompiler.compile_idx(roads_data, "roads.idx")
         meta_all.extend(roads_data)
 
-    # 3. Разделение слоя Землепользования (Landuse и Water)
+# 3. Разделение слоя Землепользования (Landuse и Water)
+    # Суша - всё, что не имеет кода воды
     landuse_only = [f for f in landuse_data if f.code != 8200]
+    
+    # Вода - строго алиасированный код 8200
     water_only = [f for f in landuse_data if f.code == 8200]
 
     if landuse_only:
@@ -543,8 +556,6 @@ def main():
         MapCompiler.compile_db(water_only, "water.db")
         MapCompiler.compile_idx(water_only, "water.idx")
         meta_all.extend(water_only)
-    else:
-        MapCompiler.create_empty_layer("water")
 
     # 4. Общая центровка камеры и генерация обязательных пустышек
     if meta_all:
