@@ -4,7 +4,7 @@
 """
 DT G1 Map Compiler (Platform ATS3085S)
 ===============================================
-v2.1 (Strict OOP, Typed & C-Union Patched)
+v2.2 (Refactored)
 Компилятор векторных данных OpenStreetMap (OSM) в закрытые бинарные форматы
 смарт-часов DT NO.1 G1 (.mlp, .idx, .db).
 
@@ -25,7 +25,7 @@ import json
 import hashlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 
 
 # ==============================================================================
@@ -35,10 +35,15 @@ from typing import List, Tuple, Dict, Optional
 class HWConfig:
     """Аппаратные константы платформы ATS3085S"""
     YZL_HEADER_SIZE = 32
-    NODE_SIZE = 28           # Унифицированный размер узла (как Data Node, так и Nav Node)
+    NODE_SIZE = 28           # Унифицированный размер узла (Data Node и Nav Node)
     CHUNK_SIZE = 14          # Максимум объектов в кластере (ограничение буфера)
     DBF_HEADER_LEN = 161     # dBase III Fixed Header
     DBF_RECORD_LEN = 145     # dBase III Fixed Record
+    
+    # Системные константы LUT
+    WATER_CODE = 8200
+    DEFAULT_HIGHWAY_CODE = 5142
+    DEFAULT_POLYGON_CODE = 7208
 
 class LookupTables:
     """Словари соответствия тегов OSM внутренним кодам стилей прошивки"""
@@ -57,17 +62,15 @@ class LookupTables:
         "nature_reserve": 7210, "recreation_ground": 7211, "retail": 7212,
         "military": 7213, "quarry": 7214, "orchard": 7215, "vineyard": 7216, "scrub": 7217,
         "grass": 7218, "heath": 7219, "farmland": 7228, "farmyard": 7229, "landfill": 7233,
-        # ПРИНУДИТЕЛЬНЫЙ ДАУНСЕМПЛИНГ ГИДРОЛОГИИ
-        # Все водные объекты принудительно маппятся в код 8200 
-        # (код, аппаратно подтвержденный для natural=water)
-        'water': 8200,
-        'riverbank': 8200,
-        'reservoir': 8200,
-        'basin': 8200,
-        'wetland': 8200,
-        'glacier': 8200,
-        'bay': 8200,
-        'dock': 8200
+        # Принудительный маппинг всех водных объектов
+        'water': HWConfig.WATER_CODE,
+        'riverbank': HWConfig.WATER_CODE,
+        'reservoir': HWConfig.WATER_CODE,
+        'basin': HWConfig.WATER_CODE,
+        'wetland': HWConfig.WATER_CODE,
+        'glacier': HWConfig.WATER_CODE,
+        'bay': HWConfig.WATER_CODE,
+        'dock': HWConfig.WATER_CODE
     }
 
     # Пороги Z-Culling (масштаб появления объекта на экране часов в метрах)
@@ -80,7 +83,7 @@ class LookupTables:
         7201: 500,  7202: 500,  7203: 500,  7204: 500,  7206: 500,  7207: 500,  7208: 500,  
         7209: 500,  7210: 500,  7211: 500,  7212: 500,  7213: 500,  7214: 500,  7215: 500,  
         7216: 500,  7217: 500,  7218: 500,  7219: 500,  7228: 500,  7229: 500,  7233: 500,
-        8200: 1000
+        HWConfig.WATER_CODE: 1000
     }
 
 
@@ -112,7 +115,7 @@ class MapFeature:
         maxy = max(p[1] for p in self.points)
         self.bbox = (minx, miny, maxx, maxy)
 
-    def pack_data_node(self, v1: int, v2: int) -> bytes:
+    def pack_data_node(self) -> bytes:
         """
         Упаковка Узла Данных (Data Node). Строго 28 байт.
         Формат (C-Union): [BBox 16b] [Type 4b] [v1 4b] [v2 4b]
@@ -122,7 +125,7 @@ class MapFeature:
             "<ffffIII", 
             self.bbox[0], self.bbox[1], self.bbox[2], self.bbox[3], 
             self.code, 
-            v1, v2
+            self.v1, self.v2
         )
 
 
@@ -178,14 +181,25 @@ class OSMParser:
                 self._process_relation(elem)
                 elem.clear()
             elif elem.tag == 'node':
-                # Защита от утечки памяти: узлы нам больше не нужны как XML-объекты
                 elem.clear()
             
         print(f"    Собрано: {len(self.roads)} дорог, {len(self.landuse)} полигонов.")
 
+    def _extract_tags(self, elem: ET.Element) -> Dict[str, str]:
+        """Утилита для извлечения тегов в словарь."""
+        return {
+            child.attrib['k']: child.attrib['v'] 
+            for child in elem.findall('tag') 
+            if 'k' in child.attrib and 'v' in child.attrib
+        }
+
     def _process_way(self, elem: ET.Element) -> None:
-        tags = {child.attrib['k']: child.attrib['v'] for child in elem.findall('tag') if 'k' in child.attrib and 'v' in child.attrib}
-        points = [self.nodes[nd.attrib['ref']] for nd in elem.findall('nd') if nd.attrib.get('ref') in self.nodes]
+        tags = self._extract_tags(elem)
+        points = [
+            self.nodes[nd.attrib['ref']] 
+            for nd in elem.findall('nd') 
+            if nd.attrib.get('ref') in self.nodes
+        ]
         
         if not points:
             return
@@ -203,7 +217,7 @@ class OSMParser:
             feature = MapFeature(
                 osm_id=osm_id,
                 fclass=fclass,
-                code=LookupTables.HIGHWAY_CODES.get(fclass, 5142),
+                code=LookupTables.HIGHWAY_CODES.get(fclass, HWConfig.DEFAULT_HIGHWAY_CODE),
                 name=name,
                 points=points
             )
@@ -222,7 +236,7 @@ class OSMParser:
                 feature = MapFeature(
                     osm_id=osm_id,
                     fclass=fclass,
-                    code=LookupTables.POLYGON_CODES.get(fclass, 7208),
+                    code=LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE),
                     name=name,
                     points=points
                 )
@@ -231,7 +245,7 @@ class OSMParser:
 
     def _process_relation(self, elem: ET.Element) -> None:
         """Сборка сложных структур с внутренними дырками (Multipolygons)"""
-        tags = {child.attrib['k']: child.attrib['v'] for child in elem.findall('tag') if 'k' in child.attrib and 'v' in child.attrib}
+        tags = self._extract_tags(elem)
         
         if tags.get('type') != 'multipolygon':
             return
@@ -247,8 +261,9 @@ class OSMParser:
         
         # Сортировка: Outer кольца обрабатываются первыми
         members = elem.findall('member')
-        sorted_members = [m for m in members if m.attrib.get('role', 'outer') == 'outer'] + \
-                         [m for m in members if m.attrib.get('role', 'outer') == 'inner']
+        outer_members = [m for m in members if m.attrib.get('role', 'outer') == 'outer']
+        inner_members = [m for m in members if m.attrib.get('role', 'outer') == 'inner']
+        sorted_members = outer_members + inner_members
         
         for member in sorted_members:
             if member.attrib.get('type') == 'way' and 'ref' in member.attrib:
@@ -275,7 +290,7 @@ class OSMParser:
             feature = MapFeature(
                 osm_id=elem.attrib['id'],
                 fclass=fclass,
-                code=LookupTables.POLYGON_CODES.get(fclass, 7208),
+                code=LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE),
                 name=name,
                 points=combined_points,
                 parts=parts
@@ -293,19 +308,27 @@ class MapCompiler:
 
     @staticmethod
     def _write_yzl_container(filepath: str, payload: bytes, is_idx: bool, lod2_size: int = 0) -> None:
-        """
-        Инкапсулирует полезную нагрузку в глобальный 32-байтовый контейнер YZL.
-        """
+        """Инкапсулирует полезную нагрузку в глобальный 32-байтовый контейнер YZL."""
         payload_size = len(payload)
         md5_hash = hashlib.md5(payload).digest()
         
         if is_idx:
-            # Специфичный заголовок для .idx: 
-            # Магическая сигнатура YZL\x08, флаг маппинга памяти 0x02 (заводские значения).
-            header = b'YZL\x08' + struct.pack("<I", payload_size) + b'\x02\x00\x00\x04' + struct.pack(">I", lod2_size) + md5_hash
+            # Магическая сигнатура YZL\x08, флаг маппинга памяти 0x02.
+            header = (
+                b'YZL\x08' + 
+                struct.pack("<I", payload_size) + 
+                b'\x02\x00\x00\x04' + 
+                struct.pack(">I", lod2_size) + 
+                md5_hash
+            )
         else:
             # Стандартный заголовок для геометрии и БД
-            header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
+            header = (
+                b'YZL\x00' + 
+                struct.pack("<I", payload_size) + 
+                b'\x00\x00\x00\x04\x00\x00\x00\x00' + 
+                md5_hash
+            )
             
         with open(filepath, 'wb') as f:
             f.write(header)
@@ -313,11 +336,7 @@ class MapCompiler:
 
     @staticmethod
     def pack_nav_node(v3_jump: int, bbox: Tuple[float, float, float, float], v1: int, v2_count: int) -> bytes:
-        """
-        Упаковка Навигационного Узла (Nav Node). Строго 28 байт.
-        Формат (C-Union): [v3_jump 4b] [BBox 16b] [v1 4b] [v2 4b]
-        Совпадает по размеру с Data Node. Смещение +20 и +24 зарезервировано для v1/v2.
-        """
+        """Упаковка Навигационного Узла (Nav Node). Строго 28 байт."""
         return struct.pack(
             "<IffffII", 
             v3_jump, 
@@ -330,7 +349,6 @@ class MapCompiler:
         """Упаковка сырой геометрии."""
         print(f"[>] Компиляция геометрии: {filepath}...")
         bin_records = bytearray()
-        abs_offset = HWConfig.YZL_HEADER_SIZE
         record_number = 1
 
         for feature in features:
@@ -351,14 +369,11 @@ class MapCompiler:
             header = struct.pack(">I", record_number) + struct.pack("<I", len(body))
             record_bin = header + body
 
-            # Текущее смещение геометрии внутри полезной нагрузки (относительно начала payload)
             current_mlp_offset = len(bin_records)
             
-            # Указатель (v1) в SQT-индексе должен пробивать заголовок объекта
-            # и указывать на саму полезную нагрузку (Payload), минуя 8 байт: ID (4) + Length (4).
+            # Указатель (v1) в SQT-индексе должен указывать на Payload, минуя заголовок (8 байт).
             feature.v1 = current_mlp_offset + 8
-            
-            feature.v2 = 1 # Значение по умолчанию (указатель на пустышку в .db)
+            feature.v2 = 1  # Зарезервировано под пустую запись в БД
             feature.mlp_size = len(record_bin)
             
             bin_records += record_bin
@@ -371,13 +386,11 @@ class MapCompiler:
         """Упаковка атрибутов в формат dBase III."""
         print(f"[>] Компиляция атрибутов: {filepath}...")
         
-        # Первая запись dBase строго пустая (зарезервирована для безымянных объектов)
+        # Первая запись dBase строго пустая
         bin_records = bytearray(b'\x00' * HWConfig.DBF_RECORD_LEN) 
         db_counter = 2 
         
-        def pad(text: any, length: int) -> bytes:
-            # Принудительное приведение к строке, т.к. feature.code - это int, 
-            # а dBase III хранит данные в символьном (Character) формате.
+        def pad(text: Any, length: int) -> bytes:
             return str(text).encode('utf-8')[:length].ljust(length, b'\x00')
             
         def desc(name: str, length: int) -> bytes:
@@ -395,9 +408,18 @@ class MapCompiler:
                 bin_records += r_bytes
 
         # Сборка 161-байтового заголовка dBase III
-        dbf_header = bytearray(b'\x03\x00\x00\x00') + struct.pack('<I', total_records)
-        dbf_header += struct.pack('<H', HWConfig.DBF_HEADER_LEN) + struct.pack('<H', HWConfig.DBF_RECORD_LEN) + b'\x00' * 20
-        dbf_header += desc("osm_id", 12) + desc("code", 4) + desc("fclass", 28) + desc("name", 100) + b'\x0D'
+        dbf_header = (
+            bytearray(b'\x03\x00\x00\x00') + 
+            struct.pack('<I', total_records) +
+            struct.pack('<H', HWConfig.DBF_HEADER_LEN) + 
+            struct.pack('<H', HWConfig.DBF_RECORD_LEN) + 
+            b'\x00' * 20 +
+            desc("osm_id", 12) + 
+            desc("code", 4) + 
+            desc("fclass", 28) + 
+            desc("name", 100) + 
+            b'\x0D'
+        )
         
         cls._write_yzl_container(filepath, dbf_header + bin_records, is_idx=False)
 
@@ -407,7 +429,6 @@ class MapCompiler:
         print(f"[>] Компиляция индекса SQT: {filepath}...")
         idx_buffer = bytearray()
         
-        # 3 уровня детализации
         lod_filters = [
             lambda c: True,
             lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500, 
@@ -419,67 +440,45 @@ class MapCompiler:
             start_len = len(idx_buffer)
             lod_records = [f for f in features if condition(f.code)]
             
-            # Маркер начала SQT
             idx_buffer.extend(b'SQT\x01')
-            idx_buffer.extend(b'\x00' * 4) # Зарезервировано (Unknown)
+            idx_buffer.extend(b'\x00' * 4) 
             
             # Защита от EOF Panic. Узлы пишутся вплотную к маркеру SQT.
-            # ОШИБКА старой спеки: аппаратного выравнивания (padding) для пустых слоев НЕ требуется.
-            # Пишем только переключатель Mode=0 и Count=0.
             if not lod_records:
                 idx_buffer.extend(struct.pack("<II", 0, 0))
                 if lod_index == 2:
-                    # Принудительно фиксируем размер LOD 2 перед continue
                     lod2_size = len(idx_buffer) - start_len
                 continue
 
-            # Разбивка на плоские кластеры (по CHUNK_SIZE объектов)
             clusters = [lod_records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(lod_records), HWConfig.CHUNK_SIZE)]
-            
-            # Определяем режим обхода: если кластеров больше 1, включается Clustered Mode,
-            # иначе для экономии ресурсов переключаемся в Flat List Mode (сплошной массив Data узлов).
             is_clustered = len(clusters) > 1
             
             if is_clustered:
-                mode = 1
-                count = len(clusters)
+                mode, count = 1, len(clusters)
                 idx_buffer.extend(struct.pack("<II", mode, count))
                 
-                for cluster_idx, cluster in enumerate(clusters):
+                for cluster in clusters:
                     if not cluster: continue
                     
-                    # Вычисление общего BBox для текущего кластера
                     c_minx = min(f.bbox[0] for f in cluster)
                     c_miny = min(f.bbox[1] for f in cluster)
                     c_maxx = max(f.bbox[2] for f in cluster)
                     c_maxy = max(f.bbox[3] for f in cluster)
                     
-                    # Формула прыжка v3 требует аппаратной компенсации +8 байт 
-                    # для корректного указания на смещение СЛЕДУЮЩЕГО Nav Node в конвейере прошивки.
+                    # Прыжок v3 с аппаратной компенсацией +8 байт
                     v3_jump = (len(cluster) * HWConfig.NODE_SIZE) + 8 
+                    nav_v1, nav_v2 = 0, len(cluster)
                     
-                    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Согласно паттерну C-Union, последние 8 байт 
-                    # навигационного узла интерпретируются парсером как управляющие линки:
-                    # v1 — всегда аппаратный ноль (маркер Nav-типа для внутренней стейт-машины).
-                    # v2 — строго количество Data Nodes внутри данного конкретного кластера.
-                    nav_v1 = 0
-                    nav_v2 = len(cluster)
-                    
-                    # Запись Узла Навигации (Nav Node)
                     idx_buffer.extend(cls.pack_nav_node(v3_jump, (c_minx, c_miny, c_maxx, c_maxy), nav_v1, nav_v2))                    
-                    # Запись Узлов Данных (Data Nodes)
+                    
                     for f in cluster:
-                        idx_buffer.extend(f.pack_data_node(f.v1, f.v2))
-            
+                        idx_buffer.extend(f.pack_data_node())
             else:
-                mode = 0
-                flat_objects = clusters[0] if clusters else []
-                count = len(flat_objects)
+                mode, count = 0, len(clusters[0]) if clusters else 0
                 idx_buffer.extend(struct.pack("<II", mode, count))
                 
-                # В режиме Flat List пишем только Data Nodes сплошным массивом (Nav Nodes отбрасываются)
-                for f in flat_objects:
-                    idx_buffer.extend(f.pack_data_node(f.v1, f.v2))
+                for f in clusters[0] if clusters else []:
+                    idx_buffer.extend(f.pack_data_node())
    
             if lod_index == 2:
                 lod2_size = len(idx_buffer) - start_len
@@ -490,15 +489,12 @@ class MapCompiler:
     def create_empty_layer(layer_prefix: str) -> None:
         """Генерация hex-пустышек для обхода EOF-проверки прошивки (System Dummies)."""
         print(f"[>] Создание системной Hex-заглушки: {layer_prefix}...")
-        # Очищенная бинарная строка пустого .mlp (убран мусор из RAM заводского компилятора с координатами Шэньчжэня)
         mlp_hex = "595A4C00000000000000000400000000D41D8CD98F00B204E9800998ECF8427E"
         idx_hex = "595A4C10300000000000000400000010E5F9D2228804251B5F9E3EAB298C30E5535154010100000000000000000000005351540101000000000000000000000053515401010000000000000000000000"
-        db_hex = "595A4C00320100000000000400000000D65E1C742D95963F147A4468DD25F93F035F071A01000000A100910000000000000000000000000000000000000000006F736D5F6964000000000043000000000C000000000000000000000000000000636F6465000000000000004E000000000400000000000000000000000000000066636C617373000000000043000000001C0000000000000000000000000000006E616D65000000000000004300000000640000000000000000000000000000000D" + "00" * HWConfig.DBF_RECORD_LEN
         
         with open(f"{layer_prefix}.mlp", "wb") as f: f.write(bytearray.fromhex(mlp_hex))
         with open(f"{layer_prefix}.idx", "wb") as f: f.write(bytearray.fromhex(idx_hex))
-        with open(f"{layer_prefix}.db",  "wb") as f: f.write(bytearray.fromhex(db_hex))
-
+ 
     @staticmethod
     def create_map_name(name: str, meta_records: List[MapFeature], out_file: str = "map.name") -> None:
         """Центрирование начальной камеры GPS-приложения."""
@@ -506,7 +502,6 @@ class MapCompiler:
         center_lat = (min(r.bbox[1] for r in meta_records) + max(r.bbox[3] for r in meta_records)) / 2.0
         center_lon = (min(r.bbox[0] for r in meta_records) + max(r.bbox[2] for r in meta_records)) / 2.0
 
-        # Жесткое требование парсера: никаких пробелов (separators)
         with open(out_file, "w", encoding="utf-8") as f:
             json.dump({"centerLat": center_lat, "centerLon": center_lon, "mapName": name}, f, separators=(',', ':'))
 
@@ -536,12 +531,9 @@ def main():
         MapCompiler.compile_idx(roads_data, "roads.idx")
         meta_all.extend(roads_data)
 
-# 3. Разделение слоя Землепользования (Landuse и Water)
-    # Суша - всё, что не имеет кода воды
-    landuse_only = [f for f in landuse_data if f.code != 8200]
-    
-    # Вода - строго алиасированный код 8200
-    water_only = [f for f in landuse_data if f.code == 8200]
+    # 3. Разделение слоя Землепользования (Landuse и Water)
+    landuse_only = [f for f in landuse_data if f.code != HWConfig.WATER_CODE]
+    water_only = [f for f in landuse_data if f.code == HWConfig.WATER_CODE]
 
     if landuse_only:
         MapCompiler.compile_mlp(landuse_only, "landuse.mlp")
