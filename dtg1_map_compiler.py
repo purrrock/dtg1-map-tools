@@ -45,47 +45,68 @@ class HWConfig:
     DEFAULT_HIGHWAY_CODE = 5142
     DEFAULT_POLYGON_CODE = 7208
 
+import csv
+import sys
+
 class LookupTables:
-    """Словари соответствия тегов OSM внутренним кодам стилей прошивки"""
-    HIGHWAY_CODES = {
-        "motorway": 5111, "trunk": 5112, "primary": 5113, "secondary": 5114, "tertiary": 5115,
-        "unclassified": 5121, "residential": 5122, "living_street": 5123, "pedestrian": 5124, "busway": 5125,
-        "motorway_link": 5131, "trunk_link": 5132, "primary_link": 5133, "secondary_link": 5134, "tertiary_link": 5135,
-        "service": 5141, "track": 5142, "track_grade1": 5143, "track_grade2": 5144, "track_grade3": 5145, 
-        "track_grade4": 5146, "track_grade5": 5147, "bridleway": 5151, "cycleway": 5152, "footway": 5153,
-        "path": 5154, "steps": 5155, "road": 5199, "unknown": 5199
-    }
+    """Динамические словари стилей (LUT), загружаемые из внешнего CSV."""
+    HIGHWAY_CODES: Dict[str, int] = {}
+    POLYGON_CODES: Dict[str, int] = {}
+    DISPLAY_SCALES: Dict[int, int] = {}
 
-    POLYGON_CODES = {
-        "forest": 7201, "park": 7202, "residential": 7203, "industrial": 7204,
-        "cemetery": 7206, "allotments": 7207, "meadow": 7208, "commercial": 7209,
-        "nature_reserve": 7210, "recreation_ground": 7211, "retail": 7212,
-        "military": 7213, "quarry": 7214, "orchard": 7215, "vineyard": 7216, "scrub": 7217,
-        "grass": 7218, "heath": 7219, "farmland": 7228, "farmyard": 7229, "landfill": 7233,
-        # Принудительный маппинг всех водных объектов
-        'water': HWConfig.WATER_CODE,
-        'riverbank': HWConfig.WATER_CODE,
-        'reservoir': HWConfig.WATER_CODE,
-        'basin': HWConfig.WATER_CODE,
-        'wetland': HWConfig.WATER_CODE,
-        'glacier': HWConfig.WATER_CODE,
-        'bay': HWConfig.WATER_CODE,
-        'dock': HWConfig.WATER_CODE
-    }
-
-    # Пороги Z-Culling (масштаб появления объекта на экране часов в метрах)
-    DISPLAY_SCALES = {
-        5111: 1000, 5112: 1000, 5113: 1000, 5114: 1000,
-        5115: 500,  5131: 500,  5132: 500,  5133: 500,  5134: 500,  5135: 500,
-        5121: 100,  5122: 100,  5123: 100,  5124: 100,  5125: 100,
-        5141: 50,   5142: 50,   5143: 50,   5144: 50,   5145: 50,   5146: 50,   5147: 50,
-        5151: 20,   5152: 20,   5153: 20,   5154: 20,   5155: 20,   5199: 20,
-        7201: 500,  7202: 500,  7203: 500,  7204: 500,  7206: 500,  7207: 500,  7208: 500,  
-        7209: 500,  7210: 500,  7211: 500,  7212: 500,  7213: 500,  7214: 500,  7215: 500,  
-        7216: 500,  7217: 500,  7218: 500,  7219: 500,  7228: 500,  7229: 500,  7233: 500,
-        HWConfig.WATER_CODE: 1000
-    }
-
+    @classmethod
+    def load_from_csv(cls, filepath: str = "features.csv") -> None:
+        """
+        Парсинг внешнего файла стилей.
+        Формат столбцов: [0]Code [1]fclass [2]Color [3]LOD [4]Layer 
+                         [5]OSM_Tags [6]Description [7]Remap_Code [8]Remap_Color [9]Remap_LOD
+        """
+        if not os.path.exists(filepath):
+            print(f"[-] Ошибка: Конфигурационный файл {filepath} не найден.")
+            sys.exit(1)
+            
+        print(f"[>] Загрузка таблицы стилей LUT из {filepath}...")
+        
+        try:
+            with open(filepath, mode='r', encoding='utf-8') as f:
+                reader = csv.reader(f, delimiter=';')
+                next(reader, None)  # Пропуск строки заголовков
+                
+                loaded_records = 0
+                for row in reader:
+                    # Пропуск пустых строк или строк с неверным количеством столбцов
+                    if len(row) < 10:
+                        continue
+                        
+                    fclass = row[1].strip()
+                    layer = row[4].strip()
+                    
+                    try:
+                        remap_code = int(row[7].strip())
+                        remap_lod = int(row[9].strip())
+                    except ValueError:
+                        # Пропуск строк, где коды не являются числами
+                        continue
+                    
+                    # Заполнение таблиц на основе целевого слоя
+                    if layer == 'roads':
+                        cls.HIGHWAY_CODES[fclass] = remap_code
+                        cls.DISPLAY_SCALES[remap_code] = remap_lod
+                    elif layer in ('landuse', 'water'):
+                        cls.POLYGON_CODES[fclass] = remap_code
+                        cls.DISPLAY_SCALES[remap_code] = remap_lod
+                        
+                    loaded_records += 1
+                    
+            print(f"    Успешно импортировано правил: {loaded_records}")
+            
+            # Принудительная инъекция системных кодов, если их нет в CSV
+            if HWConfig.WATER_CODE not in cls.DISPLAY_SCALES:
+                cls.DISPLAY_SCALES[HWConfig.WATER_CODE] = 1000
+                
+        except Exception as e:
+            print(f"[-] Фатальная ошибка парсинга {filepath}: {e}")
+            sys.exit(1)
 
 # ==============================================================================
 # МОДЕЛИ ДАННЫХ
@@ -519,6 +540,9 @@ def main():
     print("DT G1 MAP COMPILER")
     print("=========================================")
     
+    # Инициализация LUT из файла
+    LookupTables.load_from_csv("features.csv")
+
     # 1. Парсинг геометрии и сборка примитивов
     parser = OSMParser("map.osm")
     roads_data, landuse_data = parser.parse()
