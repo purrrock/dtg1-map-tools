@@ -1,0 +1,227 @@
+code;fclass;Color;LOD;Layer;Description;OSM Tags
+1001;city;;;pois;As defined by national/state/provincial government. Often over 100,000 people;place=city (but see 1005)
+1002;town;;;pois;As defined by national/state/provincial government. Generally smaller than a city, between 10,000 and 100,000 people;place=town
+1003;village;;;pois;As defined by national/state/provincial government. Generally smaller than a town, below 10,000 people;place=village
+1004;hamlet;;;pois;As defined by national/state/provincial government. Generally smaller than a village, just a few houses;place=hamlet
+1005;national_capital;;;pois;A national capital;place=city with either of (a) is_capital=country, (b) admin_level=2, (c) capital=yes and no admin level set
+1010;suburb;;;pois;Named area of town or city;place=suburb
+1020;island;;;pois;Identifies an island;place=island
+1030;farm;;;pois;Named farm;place=farm
+1031;dwelling;;;pois;Isolated dwelling (1 or 2 houses, smaller than hamlet);place=isolated_dwelling
+1040;region;;;pois;A region label (used in some areas only);place=region
+1041;county;;;pois;A county label (used in some areas only);place=county
+1050;locality;;;pois;Other kind of named place;place=locality
+2001;police;;;pois;A police post or station.;amenity=police
+2002;fire_station;;;pois;A fire station.;amenity=fire_station
+2004;post_box;;;pois;A post box (for letters).;amenity=post_box
+2005;post_office;;;pois;A post office.;amenity=post_office
+2006;telephone;;;pois;A public telephone booth.;amenity=telephone
+2007;library;;;pois;A library.;amenity=library
+2008;town_hall;;;pois;A town hall.;amenity=townhall
+2009;courthouse;;;pois;A court house.;amenity=courthouse
+2010;prison;;;pois;A prison.;amenity=prison
+2011;embassy;;;pois;An embassy.;amenity=embassy or office=diplomatic with diplomatic=embassy
+2012;community_centre;;;pois;A public facility which is mostly used by local associations for events and festivities.;amenity=community_centre
+2013;nursing_home;;;pois;A home for disabled or elderly persons who need permanent care.;amenity=nursing_home
+2014;arts_centre;;;pois;A venue at which a variety of arts are performed or conducted, and may well be involved with the creation of those works, and run occasional courses.;amenity=arts_centre
+2015;graveyard;;;pois;A graveyard.;amenity=grave_yard or landuse=cemetery
+2016;market_place;;;pois;A place where markets are held.;amenity=marketplace
+2017;consulate;;;pois;A consulate.;office=diplomatic with diplomatic=consulate
+2030;recycling;;;pois;A place (usually a container) where you can drop waste for recycling.;amenity=recycling with none of the specifics below
+2031;recycling_glass;;;pois;A place for recycling glass.;recycling:glass=yes or recycling:glass_bottles=yes
+2032;recycling_paper;;;pois;A place for recycling paper.;recycling:paper=yes
+2033;recycling_clothes;;;pois;A place for recycling clothes.;recycling:clothes=yes
+2034;recycling_metal;;;pois;A place for recycling metal.;recycling:scrap_metal=yes
+2081;university;;;pois;A university.;amenity=university
+2082;school;;;pois;A school.;amenity=school
+2083;kindergarten;;;pois;A kindergarten (nursery).;amenity=kindergarten
+2084;college;;;pois;A college.;amenity=college
+2099;public_building;;;pois;An unspecified public building.;amenity=public_building
+2101;pharmacy;;;pois;A pharmacy.;amenity=pharmacy
+2110;hospital;;;pois;A hospital.;amenity=hospital
+2111;clinic;;;pois;A medical centre that does not admit inpatients.;amenity=clinic
+2120;doctors;;;pois;A medical practice.;amenity=doctors
+2121;dentist;;;pois;A dentist's practice.;amenity=dentist
+2129;veterinary;;;pois;A veterinary (animal doctor);amenity=veterinary
+2201;theatre;;;pois;A theatre.;amenity=theatre
+2202;nightclub;;;pois;A night club, or disco.;amenity=nightclub
+2203;cinema;;;pois;A cinema.;amenity=cinema
+2204;park;;;pois;A park.;leisure=park
+2205;playground;;;pois;A playground for children.;leisure=playground
+2206;dog_park;;;pois;An area where dogs are allowed to run free without a leash.;leisure=dog_park
+2251;sports_centre;;;pois;A facility where a range of sports activities can be pursued.;leisure=sports_centre
+2252;pitch;;;pois;An area set aside for a specific sport.;leisure=pitch
+2253;swimming_pool;;;pois;A swimming pool or water park.;amenity=swimming_pool, leisure=swimming_pool, sport=swimming, leisure=water_park
+2254;tennis_court;;;pois;A tennis court.;sport=tennis
+2255;golf_course;;;pois;A golf course.;leisure=golf_course
+2256;stadium;;;pois;A stadium. The area of the stadium may contain one or several pitches.;leisure=stadium
+2257;ice_rink;;;pois;An ice rink.;leisure=ice_rink
+2301;restaurant;;;pois;A normal restaurant.;amenity=restaurant
+2302;fast_food;;;pois;A fast-food restaurant.;amenity=fast_food
+2303;cafe;;;pois;A cafe.;amenity=cafe
+2304;pub;;;pois;A pub.;amenity=pub
+2305;bar;;;pois;A bar. The difference between a pub and a bar is not clear but pubs tend to offer food while bars do not.;amenity=bar
+2306;food_court;;;pois;A common seating area with various fast-food vendors. (indoor);amenity=food_court
+2307;biergarten;;;pois;An open-air area where food and drinks are served. (outdoor);amenity=biergarten
+2401;hotel;;;pois;A hotel.;tourism=hotel
+2402;motel;;;pois;A motel.;tourism=motel
+2403;bed_and_breakfast;;;pois;A facility offering bed and breakfast.;tourism=bed_and_breakfast
+2404;guesthouse;;;pois;A guesthouse. The difference between hotel, bed and breakfast, and guest houses is not a strict one and OSM tends to use whatever the facility calls itself.;tourism=guest_house
+2405;hostel;;;pois;A hostel (offering cheap accomodation, often bunk beds in dormitories).;tourism=hostel
+2406;chalet;;;pois;A detached cottage, usually self-catering.;tourism=chalet
+2421;shelter;;;pois;All sorts of small shelters to protect against bad weather conditions.;amenity=shelter
+2422;camp_site;;;pois;A camp site or camping ground.;tourism=camp_site
+2423;alpine_hut;;;pois;An alpine hut is a building typically situated in mountains providing shelter and often food and beverages to visitors.;tourism=alpine_hut
+2424;caravan_site;;;pois;A place where people with caravans or motorhomes can stay overnight or longer.;tourism=caravan_site
+2501;supermarket;;;pois;A supermarket.;shop=supermarket
+2502;bakery;;;pois;A bakery.;shop=bakery
+2503;kiosk;;;pois;A very small shop usually selling cigarettes, newspapers, sweets, snacks and beverages.;shop=kiosk
+2504;mall;;;pois;A shopping mall.;shop=mall
+2505;department_store;;;pois;A department store.;shop=department_store
+2510;general;;;pois;A general store, offering a broad range of products on a small area. Exists usually in rural and remote areas.;shop=general
+2511;convenience;;;pois;A convenience store is a small shop selling a subset of items you might find at a supermarket.;shop=convenience
+2512;clothes;;;pois;A clothes or fashion store.;shop=clothes
+2513;florist;;;pois;A store stelling flowers.;shop=florist
+2514;chemist;;;pois;A shop selling articles of personal hygiene, cosmetics, and household cleaning products.;shop=chemist
+2515;bookshop;;;pois;A book shop.;shop=books
+2516;butcher;;;pois;A butcher.;shop=butcher
+2517;shoe_shop;;;pois;A shoe shop.;shop=shoes
+2518;beverages;;;pois;A place where you can buy alcoholic and non-alcoholic beverages.;shop=alcohol, shop=beverages
+2519;optician;;;pois;A place where you can buy glasses.;shop=optician
+2520;jeweller;;;pois;A jewelry shop.;shop=jewelry
+2521;gift_shop;;;pois;A gift shop.;shop=gift
+2522;sports_shop;;;pois;A shop selling sports equipment.;shop=sports
+2523;stationery;;;pois;A shop selling stationery for private and office use.;shop=stationery
+2524;outdoor_shop;;;pois;A shop selling outdoor equiment.;shop=outdoor
+2525;mobile_phone_shop;;;pois;A shop for mobile phones.;shop=mobile_phone
+2526;toy_shop;;;pois;A toy store.;shop=toys
+2527;newsagent;;;pois;A show selling mainly newspapers and magazines.;shop=newsagent
+2528;greengrocer;;;pois;A shop selling fruit and vegetables.;shop=greengrocer
+2529;beauty_shop;;;pois;A shop that provides personal beauty services like a nail salon or tanning salon.;shop=beauty
+2530;video_shop;;;pois;A place where you can buy films.;shop=video
+2541;car_dealership;;;pois;A car dealership.;shop=car
+2542;bicycle_shop;;;pois;A bicycle shop.;shop=bicycle
+2543;doityourself;;;pois;A do-it-yourself shop where you can buy tools and building materials.;shop=doityourself and shop=hardware
+2544;furniture_shop;;;pois;A furniture store.;shop=furniture
+2546;computer_shop;;;pois;A computer shop.;shop=computer
+2547;garden_centre;;;pois;A place selling plants and gardening goods.;shop=garden_centre
+2561;hairdresser;;;pois;A hair salon.;shop=hairdresser
+2562;car_repair;;;pois;A car garage.;shop=car_repair
+2563;car_rental;;;pois;A place where you can rent a car.;amenity=car_rental
+2564;car_wash;;;pois;A car wash.;amenity=car_wash
+2565;car_sharing;;;pois;A car sharing station.;amenity=car_sharing
+2566;bicycle_rental;;;pois;A place where you can rent bicycles.;amenity=bicycle_rental
+2567;travel_agent;;;pois;A travel agency.;shop=travel_agency
+2568;laundry;;;pois;A place where you can wash clothes or have them cleaned.;shop=laundry, shop=dry_cleaning
+2590;vending_machine;;;pois;An unspecified vending machine.;amenity=vending_machine with none of the specifics below
+2591;vending_cigarette;;;pois;A cigarette vending machine.;vending=cigarettes
+2592;vending_parking;;;pois;A vending machine for parking tickets.;vending=parking_tickets
+2593;vending_drinks;;;pois;A vending machine for drinks.;amenity=vending_machine with vending=drinks
+2594;vending_tickets;;;pois;A vending machine for public transport tickets.;amenity=vending_machine with vending=public_transport_tickets
+2601;bank;;;pois;A bank.;amenity=bank
+2602;atm;;;pois;A machine that lets you withdraw cash from your bank account.;amenity=atm
+2701;tourist_info;;;pois;Something that provides information to tourists, may or many not be manned.;tourism=information with none of the specifics below
+2704;tourist_map;;;pois;A map displayed to inform tourists.;tourism=information and information=map
+2705;tourist_board;;;pois;A board with explanations aimed at tourists.;tourism=information and information=board
+2706;tourist_guidepost;;;pois;A guide post.;tourism=information and information=guidepost
+2721;attraction;;;pois;A tourist attraction.;tourism=attraction
+2722;museum;;;pois;A museum.;tourism=museum
+2723;monument;;;pois;A monument.;historic=monument
+2724;memorial;;;pois;A memorial.;historic=memorial
+2725;art;;;pois;A permanent work of art.;tourism=artwork
+2731;castle;;;pois;A castle.;historic=castle
+2732;ruins;;;pois;Ruins of historic significance.;historic=ruins
+2733;archaeological;;;pois;An excavation site.;historic=archaeological_site
+2734;wayside_cross;;;pois;A wayside cross, not necessarily old.;historic=wayside_cross
+2735;wayside_shrine;;;pois;A wayside shrine.;historic=wayside_shrine
+2736;battlefield;;;pois;A historic battlefield.;historic=battlefield
+2737;fort;;;pois;A fort.;historic=fort
+2741;picnic_site;;;pois;A picnic site.;tourism=picnic_site
+2742;viewpoint;;;pois;A viewpoint.;tourism=viewpoint
+2743;zoo;;;pois;A zoo.;tourism=zoo
+2744;theme_park;;;pois;A theme park.;tourism=theme_park
+2901;toilet;;;pois;Public toilets.;amenity=toilets
+2902;bench;;;pois;A public bench.;amenity=bench
+2903;drinking_water;;;pois;A tap or other source of drinking water.;amenity=drinking_water
+2904;fountain;;;pois;A fountain for cultural, decorative, or recreational purposes.;amenity=fountain
+2905;hunting_stand;;;pois;A hunting stand.;amenity=hunting_stand
+2906;waste_basket;;;pois;A waste basket.;amenity=waste_basket
+2907;camera_surveillance;;;pois;A surveillance camera.;man_made=surveillance
+2921;emergency_phone;;;pois;An emergency telephone.;amenity=emergency_phone, emergency=phone
+2922;fire_hydrant;;;pois;A firy hydrant.;amenity=fire_hydrant, emergency=fire_hydrant
+2923;emergency_access;;;pois;An emergency access point (signposted place in e.g. woods the location of which is known to emergency services).;highway=emergency_access_point
+2950;tower;;;pois;A tower of some kind.;man_made=tower and none of the specifics below
+2951;tower_comms;;;pois;A communications tower.;man_made=tower and tower:type=communication
+2952;water_tower;;;pois;A water tower.;man_made=water_tower
+2953;tower_observation;;;pois;An observation tower.;man_made=tower and tower:type=observation
+2954;windmill;;;pois;A windmill.;man_made=windmill
+2955;lighthouse;;;pois;A lighthouse.;man_made=lighthouse
+2961;wastewater_plant;;;pois;A wastewater treatment plant.;man_made=wastewater_plant
+2962;water_well;;;pois;A facility to access underground aquifers.;man_made=water_well
+2963;water_mill;;;pois;A mill driven by water. Often historic.;man_made=watermill
+2964;water_works;;;pois;A place where drinking water is processed.;man_made=water_works
+3100;christian;;;pois;A christian place of worship (usually a church) without one of the denominations below.;amenity=place_of_worship + religion=christian
+3101;christian_anglican;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3102;christian_catholic;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3103;christian_evangelical;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3104;christian_lutheran;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3105;christian_methodist;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3106;christian_orthodox;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3107;christian_protestant;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3108;christian_baptist;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3109;christian_mormon;;;pois;A christian place of worship where the denomination is known.;#»Ãﬂ?
+3200;jewish;;;pois;A jewish place of worship (usually a synagogue).;amenity=place_of_worship + religion=jewish
+3300;muslim;;;pois;A muslim place of worhsip, (usually a mosque) without one of the denominations below.;amenity=place_of_worship + religion=muslim
+3301;muslim_sunni;;;pois;A Sunni muslim place of worship.;#»Ãﬂ?
+3302;muslim_shia;;;pois;A Shia muslim place of worship.;#»Ãﬂ?
+3400;buddhist;;;pois;A Buddhist place of worship.;amenity=place_of_worship + religion=buddhist
+3500;hindu;;;pois;A Hindu place of worship.;amenity=place_of_worship + religion=hindu
+3600;taoist;;;pois;A Taoist place of worship.;amenity=place_of_worship + religion=taoist
+3700;shintoist;;;pois;A Shintoist place of worship.;amenity=place_of_worship + religion=shintoist
+3800;sikh;;;pois;A Sikh place of worship.;amenity=place_of_worship + religion=sikh
+4101;spring;;;pois;A spring, possibly source of a stream.;natural=spring
+4103;glacier;;;pois;A glacier.;natural=glacier
+4111;peak;;;pois;A mountain peak.;natural=peak
+4112;cliff;;;pois;A cliff.;natural=cliff
+4113;volcano;;;pois;A volcano.;natural=volcano
+4121;tree;;;pois;A tree.;natural=tree
+4131;mine;;;pois;A mine.;natural=mine
+4132;cave_entrance;;;pois;A cave entrance.;natural=cave_entrance
+4141;beach;;;pois;A beach. (Note that beaches are only rarely mapped as point features.);natural=beach
+5201;traffic_signals;;;pois;Traffic lights.;highway=traffic_signals
+5202;mini_roundabout;;;pois;A small roundabout without physical strucutre, usually just painted onto the road surface.;highway=mini_roundabout
+5203;stop;;;pois;A stop sign.;highway=stop
+5204;crossing;;;pois;A place where the street is crossed by pedestrians or a railway.;highway=crossing, railway=level_crossing
+5205;ford;;;pois;A place where the road runs through a river or stream.;highway=ford
+5206;motorway_junction;;;pois;The place where a slipway enters or leaves a motorway.;highway=motorway_junction
+5207;turning_circle;;;pois;An area at the end of a street where vehicles can turn.;highway=turning_circle
+5208;speed_camera;;;pois;A camera that photographs speeding vehicles.;highway=speed_camera
+5209;street_lamp;;;pois;A lamp illuminating the road.;highway=street_lamp
+5250;fuel;;;pois;A gas station.;amenity=fuel
+5251;service;;;pois;A service area, usually along motorways.;highway=services
+5260;parking;;;pois;A car park of unknown type.;amenity=parking with none of the specifics below and without access=private/customers
+5261;parking_surface;;;pois;A surface car park.;amenity=parking and parking=surface and without access=private/customers
+5262;parking_multistorey;;;pois;A multi storey car park.;parking=multi-storey and without access=private/customers
+5263;parking_underground;;;pois;An underground car park.;parking=underground and without access=private/customers
+5264;parking_street;;;pois;On-street parking.;parking=street_side/lane and without access=private/customers
+5270;parking_bicycle;;;pois;A place to park your bicycle.;amenity=bicycle_parking and without access=private/customers
+5271;bicycle_repair_station;;;pois;A bicycle repair station.;amenity=bicycle_repair_station
+5301;slipway;;;pois;A slipway.;leisure=slipway
+5302;marina;;;pois;A marina.;leisure=marina
+5303;pier;;;pois;A pier.;man_made=pier
+5311;dam;;;pois;A dam.;waterway=dam
+5321;waterfall;;;pois;A waterfall.;waterway=waterfall
+5331;lock_gate;;;pois;A lock gate.;waterway=lock_gate
+5332;weir;;;pois;A barrier built across a river or stream.;waterway=weir
+5601;railway_station;;;pois;A larger railway station of mainline rail services.;railway=station
+5602;railway_halt;;;pois;A smaller, local railway station, or subway station.;railway=halt, or public_transport=stop_position + train=yes
+5603;tram_stop;;;pois;A tram stop.;railway=tram_stop, or public_transport=stop_position + tram=yes
+5621;bus_stop;;;pois;A bus stop.;highway=bus_stop, or public_transport=stop_position + bus=yes
+5622;bus_station;;;pois;A large bus station with multiple platforms.;amenity=bus_station
+5641;taxi_rank;;;pois;A taxi rank.;amenity=taxi
+5651;airport;;;pois;A large airport.;amenity=airport or aeroway=aerodrome unless type=airstrip
+5652;airfield;;;pois;A small airport or airfield.;aeroway=airfield, military airfield, aeroway=aeroway with type=airstrip
+5655;helipad;;;pois;A place for landing helicopters.;aeroway=helipad
+5656;apron;;;pois;A apron (area where aircraft are parked);aeroway=apron
+5661;ferry_terminal;;;pois;A ferry terminal.;amenity=ferry_terminal
+5671;aerialway_station;;;pois;A station where cable cars or lifts alight.;aerialway=station

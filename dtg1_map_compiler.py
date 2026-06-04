@@ -404,7 +404,15 @@ class MapCompiler:
 
     @classmethod
     def compile_db(cls, features: List[MapFeature], filepath: str) -> None:
-        """Упаковка атрибутов в формат dBase III."""
+        """Упаковка атрибутов в формат dBase III. Записывается только при наличии полезных данных."""
+        has_named_features = any(feature.name for feature in features)
+        
+        if not has_named_features:
+            print(f"[~] Слой {filepath} не содержит именованных объектов. Создание .db файла пропущено.")
+            for feature in features:
+                feature.v2 = 0  # 0 означает полное отсутствие ссылки на БД атрибутов
+            return
+    
         print(f"[>] Компиляция атрибутов: {filepath}...")
         
         # Первая запись dBase строго пустая
@@ -551,7 +559,7 @@ def main():
     # 2. Компиляция слоя Дорог
     if roads_data:
         MapCompiler.compile_mlp(roads_data, "roads.mlp")
-        MapCompiler.compile_db(roads_data, "roads.db")
+        MapCompiler.compile_db(roads_data, "roads.db")  # Запишется только если есть имена
         MapCompiler.compile_idx(roads_data, "roads.idx")
         meta_all.extend(roads_data)
 
@@ -561,7 +569,7 @@ def main():
 
     if landuse_only:
         MapCompiler.compile_mlp(landuse_only, "landuse.mlp")
-        MapCompiler.compile_db(landuse_only, "landuse.db")
+        MapCompiler.compile_db(landuse_only, "landuse.db")  # Запишется только если есть имена
         MapCompiler.compile_idx(landuse_only, "landuse.idx")
         meta_all.extend(landuse_only)
     else:
@@ -569,7 +577,7 @@ def main():
 
     if water_only:
         MapCompiler.compile_mlp(water_only, "water.mlp")
-        MapCompiler.compile_db(water_only, "water.db")
+        MapCompiler.compile_db(water_only, "water.db")  # Запишется только если есть имена
         MapCompiler.compile_idx(water_only, "water.idx")
         meta_all.extend(water_only)
 

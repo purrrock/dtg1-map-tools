@@ -4,16 +4,15 @@
 """
 DT G1 IDX Dumper (CSV Export)
 =============================
-Утилита для создания читаемых CSV-дампов из бинарных .idx файлов.
-Обновлена для работы со строго плоским списком кластеров (Flat List Paradigm).
+Утилита для создания читаемых CSV-дампов из бинарных пространственных индексов (.idx).
+Рефакторинг под Спецификацию v4.0 (C-Union Node Architecture & Mode Switch).
 """
 
 import os
 import struct
 import argparse
-from pathlib import Path
 
-def dump_idx(file_path, out_csv):
+def dump_idx(file_path: str, out_csv: str) -> None:
     if not os.path.exists(file_path):
         print(f"[-] Файл {file_path} не найден.")
         return
@@ -23,80 +22,103 @@ def dump_idx(file_path, out_csv):
 
     size = len(data)
     with open(out_csv, "w", encoding="utf-8") as out:
-        # Заголовок CSV
-        out.write("Offset_Hex,LOD_Level,NodeType,v1,v2,v3_or_Code,MinX,MinY,MaxX,MaxY,Raw_Hex\n")
+        # Унифицированный заголовок CSV. Столбец Code_or_v3Jump меняет смысл в зависимости от типа узла (C-Union)
+        out.write("Offset_Hex,LOD_Level,Mode,NodeType,v1,v2,Code_or_v3Jump,MinX,MinY,MaxX,MaxY,Raw_Hex\n")
         
-        # Глобальный YZL всегда занимает первые 32 байта
-        out.write(f"0x00,-,YZL Header,,,,,,,,{data[:32].hex()}\n")
+        # Глобальный контейнер YZL всегда занимает первые 32 байта памяти
+        if size < 32:
+            print("[-] Ошибка: Файл слишком мал для YZL-контейнера.")
+            return
+            
+        out.write(f"0x00,-,-,YZL Header,,,,,,,,{data[:32].hex()}\n")
 
         offset = 32
         lod_level = 0
 
         while offset < size:
-            # Поиск сигнатуры уровня детализации (LOD)
+            # 1. Поиск сигнатуры уровня детализации (LOD SQT)
             if data[offset:offset+4] == b"SQT\x01":
-                param = struct.unpack("<I", data[offset+4:offset+8])[0]
-                out.write(f"{hex(offset)},{lod_level},SQT Header,,,Param:{param},,,,,{data[offset:offset+8].hex()}\n")
-                offset += 8
-                
-                # Автомат состояний для плоского списка
-                data_nodes_left = 0
-                
-                next_sqt = data.find(b"SQT\x01", offset)
-                if next_sqt == -1: 
-                    next_sqt = size
-
-                while offset < next_sqt:
-                    rem = next_sqt - offset
-                    # Обработка терминаторов уровня и выравнивания
-                    if rem < 28:
-                        pad_raw = data[offset:next_sqt]
-                        node_type = f"Padding ({rem} bytes)" if pad_raw == b'\x00' * rem else "Unknown Tail"
-                        out.write(f"{hex(offset)},{lod_level},{node_type},,,,,,,,,{pad_raw.hex()}\n")
-                        offset = next_sqt
-                        break
-
-                    node_raw = data[offset:offset+28]
-                    # Считываем первые 8 байт для определения типа узла
-                    v1, v2 = struct.unpack("<II", node_raw[:8])
+                # Заголовок SQT занимает строго 16 байт: 
+                # [Магия 4b] [Паддинг 4b] [Mode 4b] [Count 4b]
+                header_raw = data[offset:offset+16]
+                if len(header_raw) < 16:
+                    break
                     
-                    if data_nodes_left > 0:
-                        # Состояние 3: Чтение массива узлов данных (Data Nodes)
-                        v1, v2, minx, miny, maxx, maxy, code = struct.unpack("<IIffffI", node_raw)
-                        out.write(f"{hex(offset)},{lod_level},Data Node,{v1},{v2},{code},{minx:.6f},{miny:.6f},{maxx:.6f},{maxy:.6f},{node_raw.hex()}\n")
-                        data_nodes_left -= 1
-                    else:
-                        # Состояние 1 или 2: Ожидаем либо Узел перехода, либо Заголовок кластера
-                        if v1 == 0:
-                            # Состояние 2: Заголовок кластера (v1 жестко равен 0)
-                            v1, v2, minx, miny, maxx, maxy, code = struct.unpack("<IIffffI", node_raw)
-                            out.write(f"{hex(offset)},{lod_level},Cluster Header,{v1},{v2},{code},{minx:.6f},{miny:.6f},{maxx:.6f},{maxy:.6f},{node_raw.hex()}\n")
-                            # v2 содержит (Кол-во_объектов + 1). Вычисляем, сколько узлов данных ждать дальше.
-                            data_nodes_left = v2 - 1 if v2 > 0 else 0
-                        else:
-                            # Состояние 1: Узел перехода (Navigation Node)
-                            # Распаковываем <IIIffff (v3 - это указатель аппаратного прыжка)
-                            v1, v2, v3, minx, miny, maxx, maxy = struct.unpack("<IIIffff", node_raw)
-                            out.write(f"{hex(offset)},{lod_level},Navigation Node,{v1},{v2},{v3},{minx:.6f},{miny:.6f},{maxx:.6f},{maxy:.6f},{node_raw.hex()}\n")
-
-                    offset += 28
+                mode, count = struct.unpack("<II", header_raw[8:16])
+                mode_str = "Clustered" if mode == 1 else "Flat List"
+                
+                out.write(f"{hex(offset)},{lod_level},{mode_str},SQT Header,,,{count},,,,,{header_raw.hex()}\n")
+                offset += 16
+                
+                # 2. Обработка пустого слоя (System Dummy / защита от EOF Panic)
+                if count == 0:
+                    lod_level += 1
+                    continue
+                    
+                # 3. Парсинг узлов стейт-машины в зависимости от режима Mode
+                if mode == 1:
+                    # Режим 0x01 (Clustered): Сначала считывается Nav Node, затем вложенные Data Nodes
+                    clusters_processed = 0
+                    while clusters_processed < count and offset < size:
+                        nav_raw = data[offset:offset+28]
+                        if len(nav_raw) < 28:
+                            break
+                            
+                        # Распаковка Nav Node (Паттерн C-Union: <IffffII)
+                        # v3_jump: указатель аппаратного прыжка (размер кластера + 8 байт компенсации префетча)
+                        # v1: зарезервировано (обычно 0)
+                        # v2: количество Data Nodes в данном кластере
+                        v3_jump, minx, miny, maxx, maxy, v1, v2 = struct.unpack("<IffffII", nav_raw)
+                        out.write(f"{hex(offset)},{lod_level},{mode_str},Nav Node,{v1},{v2},{v3_jump},{minx:.6f},{miny:.6f},{maxx:.6f},{maxy:.6f},{nav_raw.hex()}\n")
+                        offset += 28
+                        
+                        data_nodes_count = v2
+                        
+                        for _ in range(data_nodes_count):
+                            if offset >= size: break
+                            data_raw = data[offset:offset+28]
+                            
+                            # Распаковка Data Node (Паттерн C-Union: <ffffIII)
+                            # code: системный алиас стиля объекта (LUT)
+                            # d_v1: абсолютное смещение геометрии в .mlp
+                            # d_v2: индекс строки в атрибутивной БД .db
+                            d_minx, d_miny, d_maxx, d_maxy, code, d_v1, d_v2 = struct.unpack("<ffffIII", data_raw)
+                            out.write(f"{hex(offset)},{lod_level},{mode_str},Data Node,{d_v1},{d_v2},{code},{d_minx:.6f},{d_miny:.6f},{d_maxx:.6f},{d_maxy:.6f},{data_raw.hex()}\n")
+                            offset += 28
+                            
+                        clusters_processed += 1
+                        
+                elif mode == 0:
+                    # Режим 0x00 (Flat List): Только Data Nodes (без кластеризации и прыжков)
+                    nodes_processed = 0
+                    while nodes_processed < count and offset < size:
+                        data_raw = data[offset:offset+28]
+                        if len(data_raw) < 28:
+                            break
+                            
+                        d_minx, d_miny, d_maxx, d_maxy, code, d_v1, d_v2 = struct.unpack("<ffffIII", data_raw)
+                        out.write(f"{hex(offset)},{lod_level},{mode_str},Data Node,{d_v1},{d_v2},{code},{d_minx:.6f},{d_miny:.6f},{d_maxx:.6f},{d_maxy:.6f},{data_raw.hex()}\n")
+                        offset += 28
+                        nodes_processed += 1
+                        
                 lod_level += 1
+                
             else:
-                # Fallback для битых или неизвестных блоков памяти
+                # 4. Fallback для битых или неизвестных блоков памяти (поиск сигнатуры следующего SQT)
                 next_sqt = data.find(b"SQT\x01", offset)
                 if next_sqt == -1: 
                     next_sqt = size
                 rem = next_sqt - offset
-                out.write(f"{hex(offset)},{lod_level},Unknown Chunk,,,,,,,,, {data[offset:offset+rem].hex()}\n")
+                chunk_hex = data[offset:offset+rem].hex()
+                out.write(f"{hex(offset)},{lod_level},Unknown,Unknown Chunk,,,,,,,,{chunk_hex}\n")
                 offset += rem
                 
-    print(f"[+] Дамп сохранен в {out_csv} (Режим: Плоский список)")
+    print(f"[+] Дамп успешно сохранен в {out_csv}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("idx_file")
+    parser = argparse.ArgumentParser(description="Декомпилятор пространственного индекса DT G1 (.idx)")
+    parser.add_argument("input", help="Путь к файлу .idx")
+    parser.add_argument("output", help="Путь для сохранения .csv дампа")
     args = parser.parse_args()
     
-    in_path = Path(args.idx_file)
-    out_path = in_path.with_name(f"{in_path.stem}_dump.csv")
-    dump_idx(in_path, out_path)
+    dump_idx(args.input, args.output)
