@@ -28,7 +28,7 @@ import csv
 import sys
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Any
-
+import argparse
 
 # ==============================================================================
 # КОНФИГУРАЦИЯ И СИСТЕМНЫЕ КОНСТАНТЫ
@@ -55,11 +55,12 @@ class LookupTables:
     POLYGON_CODES: Dict[str, int] = {}
     POI_CODES: Dict[str, int] = {}
     DISPLAY_SCALES: Dict[int, int] = {}
+    DISABLED_FCLASSES: set = set()  # Новый глобальный реестр отключенных классов
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
-
-        #Парсинг внешнего файла стилей. Формат столбцов: [0]Code [1]fclass [2]Color [3]LOD [4]Layer [5]OSM_Tags [6]Description [7]Remap_Code [8]Remap_Color [9]Remap_LOD
+        # Парсинг внешнего файла стилей. Формат столбцов: 
+        # [0]Code [1]fclass ... [7]Remap_Code [8]Remap_Color [9]Remap_LOD [10]Enabled
 
         if not os.path.exists(filepath):
             print(f"[-] Ошибка: Конфигурационный файл {filepath} не найден.")
@@ -74,18 +75,24 @@ class LookupTables:
                 
                 loaded_records = 0
                 for row in reader:
-                    if len(row) < 10:
+                    if len(row) < 11: # Расширено до 11 столбцов
                         continue
                         
                     fclass = row[1].strip()
                     layer = row[4].strip()
+                    
+                    # Считывание флага Enabled. Любое из этих значений отключает класс.
+                    enabled_flag = row[10].strip().lower()
+                    if enabled_flag in ('0', 'false', 'no', 'off', ''):
+                        cls.DISABLED_FCLASSES.add(fclass)
+                        continue  # Пропускаем добавление объекта в активные словари маппинга
                     
                     try:
                         remap_code = int(row[7].strip())
                         remap_lod = int(row[9].strip())
                     except ValueError:
                         continue
-                    
+
                     if layer == 'roads':
                         cls.HIGHWAY_CODES[fclass] = remap_code
                         cls.DISPLAY_SCALES[remap_code] = remap_lod
@@ -99,7 +106,9 @@ class LookupTables:
                     loaded_records += 1
                     
             print(f"    Успешно импортировано правил: {loaded_records}")
-            
+            print(f"[i] LUT загружен. Дорог: {len(cls.HIGHWAY_CODES)}, Полигонов: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
+            print(f"[i] Объектов в Blacklist: {len(cls.DISABLED_FCLASSES)}")
+
             if HWConfig.WATER_CODE not in cls.DISPLAY_SCALES:
                 cls.DISPLAY_SCALES[HWConfig.WATER_CODE] = 1000
                 
@@ -252,15 +261,25 @@ class OSMParser:
         }
 
     def _process_node(self, elem: ET.Element) -> None:
-        """Обработка точек интереса (POI)"""
+        """
+        Парсинг точечных объектов (POI).
+        Обеспечивает программное отсечение по Blacklist и подготовку
+        геометрии узла для записи в 16-байтный BBox Data Node формата ATS3085S.
+        """
         tags = self._extract_tags(elem)
-        if not tags: return
+        if not tags: 
+            return
 
         fclass = None
         code = None
         
-        # Поиск совпадений тегов с таблицей POI (LUT)
+        # Поиск совпадений тегов с таблицей маршрутизации (LUT)
         for val in tags.values():
+            # Глухое отсечение: если класс имеет флаг Enabled = 0, 
+            # немедленно прерываем парсинг для экономии RAM
+            if val in LookupTables.DISABLED_FCLASSES:
+                return 
+            
             if val in LookupTables.POI_CODES:
                 fclass = val
                 code = LookupTables.POI_CODES[val]
@@ -269,18 +288,29 @@ class OSMParser:
         if code is None:
             return
 
+        # Извлечение атрибутов узла
         name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
-        lon = float(elem.attrib['lon'])
-        lat = float(elem.attrib['lat'])
+        osm_id = elem.attrib['id']
         
+        # Извлечение сырых координат из кэша (заполняется в _pass1_cache_nodes)
+        node_coord = self.nodes.get(osm_id)
+        if not node_coord:
+            return
+
+        # Инициализация объекта. Для слоя pois массив points 
+        # всегда содержит строго одну координатную пару (lat, lon).
         feature = MapFeature(
-            osm_id=elem.attrib['id'],
+            osm_id=osm_id, 
             fclass=fclass,
             code=code,
-            name=name,
-            points=[(lon, lat)]
+            name=name, 
+            points=[node_coord]
         )
-        feature.calculate_bbox()  # min и max будут равны, что и требуется для BBox координат
+        
+        # Вызов метода calculate_bbox() для точки (X_min=X_max, Y_min=Y_max).
+        # Это необходимо для аппаратной совместимости, так как парсер часов
+        # читает координаты POI напрямую из полей Bounding Box узла данных.
+        feature.calculate_bbox()
         self.pois.append(feature)
 
     def _process_way(self, elem: ET.Element) -> None:
@@ -302,6 +332,10 @@ class OSMParser:
             if fclass == 'track' and 'tracktype' in tags:
                 fclass = fclass + '_' + tags['tracktype']
                 
+            # Проверка блэклиста перед присвоением дефолтных кодов
+            if fclass in LookupTables.DISABLED_FCLASSES:
+                return
+                
             feature = MapFeature(
                 osm_id=osm_id, fclass=fclass,
                 code=LookupTables.HIGHWAY_CODES.get(fclass, HWConfig.DEFAULT_HIGHWAY_CODE),
@@ -311,11 +345,16 @@ class OSMParser:
             self.roads.append(feature)
             
         elif ('landuse' in tags or 'leisure' in tags or 'natural' in tags) and len(points) >= 4:
+            fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', 'unknown')))
+            
+            # Проверка блэклиста для полигонов
+            if fclass in LookupTables.DISABLED_FCLASSES:
+                return
+                
             if points[0] == points[-1]: 
-                fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', 'unknown')))
                 if not self._is_clockwise(points):
                     points.reverse()
-                    
+                   
                 feature = MapFeature(
                     osm_id=osm_id, fclass=fclass,
                     code=LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE),
@@ -329,7 +368,10 @@ class OSMParser:
         if tags.get('type') != 'multipolygon': return
             
         fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', None)))
-        if not fclass: return
+        
+        # Проверка блэклиста для мультиполигонов
+        if not fclass or fclass in LookupTables.DISABLED_FCLASSES: 
+            return
             
         name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
         combined_points, parts = [], []
@@ -604,12 +646,26 @@ class MapCompiler:
 # ==============================================================================
 
 def main():
+    # --- БЛОК АРГУМЕНТОВ КОМАНДНОЙ СТРОКИ ---
+    cli_parser = argparse.ArgumentParser(
+        description="DT G1 Map Compiler (Platform ATS3085S) - Vector OSM to Binary YZL/SQT"
+    )
+    cli_parser.add_argument(
+        "-p", "--poi-mode",
+        choices=["native", "landuse", "none"],
+        default="none",
+        help="Режим генерации POI: 'native' (родной слой pois.idx/db), 'landuse' (интеграция полигонами), 'none' (игнорировать POI, по умолчанию)"
+    )
+    args = cli_parser.parse_args()
+    # ----------------------------------------
+
     if not os.path.exists("map.osm"):
         print("[-] Ошибка: Файл map.osm не найден. Завершение работы.")
         return
         
     print("=========================================")
     print("DT G1 MAP COMPILER")
+    print(f"Режим слоя POI: {args.poi_mode.upper()}")
     print("=========================================")
     
     LookupTables.load_from_csv("features.csv")
@@ -617,25 +673,22 @@ def main():
     parser = OSMParser("map.osm")
     roads_data, landuse_data, pois_data = parser.parse()
 
-# --- БЛОК ИНЪЕКЦИИ GPX ---
+    # --- БЛОК ИНЪЕКЦИИ GPX ---
     gpx_file = "route.gpx"
     if os.path.exists(gpx_file):
         print(f"[>] Обнаружен файл маршрута {gpx_file}. Выполняется инъекция...")
         
-        # Распаковываем полученный кортеж
         track_name, track_points = GPXParser.parse_track(gpx_file)
         
         if track_points and len(track_points) >= 2:
-            # Создаем объект дороги из трека
             gpx_feature = MapFeature(
                 osm_id="user_track_001",
                 fclass="gpx_track",
-                code=5111, # Наш зарезервированный оранжевый цвет
-                name=track_name,  # Динамическое имя из XML-тегов
+                code=5111, 
+                name=track_name,
                 points=track_points
             )
             gpx_feature.calculate_bbox()
-            # Внедряем объект в слой дорог перед компиляцией
             roads_data.append(gpx_feature)
             print(f"    Трек '{track_name}' успешно интегрирован (Точек: {len(track_points)}).")
     # --------------------------
@@ -667,13 +720,22 @@ def main():
         MapCompiler.compile_idx(water_only, "water.idx")
         meta_all.extend(water_only)
 
-    # 3. Компиляция слоя точек (POI)
-    if pois_data:
-        MapCompiler.compile_db(pois_data, "pois.db", is_poi=True)
-        MapCompiler.compile_idx(pois_data, "pois.idx", is_poi=True)
-        meta_all.extend(pois_data)
-    else:
-        # В случае отсутствия тегов в OSM - оставляем без генерации слоя pois.
+    # 3. Обработка слоя точек (POI) согласно параметрам CLI
+    if args.poi_mode == "none":
+        print("[>] Слой POI пропущен (выбран режим 'none').")
+        
+    elif args.poi_mode == "native":
+        if pois_data:
+            MapCompiler.compile_db(pois_data, "pois.db", is_poi=True)
+            MapCompiler.compile_idx(pois_data, "pois.idx", is_poi=True)
+            meta_all.extend(pois_data)
+        else:
+            print("[~] Точечные объекты (POI) отсутствуют в исходных данных.")
+            
+    elif args.poi_mode == "landuse":
+        print("[>] Интеграция POI в слой landuse: функция находится в разработке (заглушка).")
+        # TODO: Реализовать конвертацию pois_data в полигоны
+        # и перераспределение их в массив landuse_only перед компиляцией.
         pass
 
     # 4. Общая центровка камеры
