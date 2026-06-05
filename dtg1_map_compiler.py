@@ -58,13 +58,10 @@ class LookupTables:
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
-         """
-        Парсинг внешнего файла стилей.
-        Формат столбцов: [0]Code [1]fclass [2]Color [3]LOD [4]Layer 
-                         [5]OSM_Tags [6]Description [7]Remap_Code [8]Remap_Color [9]Remap_LOD
-        """
 
-       if not os.path.exists(filepath):
+        #Парсинг внешнего файла стилей. Формат столбцов: [0]Code [1]fclass [2]Color [3]LOD [4]Layer [5]OSM_Tags [6]Description [7]Remap_Code [8]Remap_Color [9]Remap_LOD
+
+        if not os.path.exists(filepath):
             print(f"[-] Ошибка: Конфигурационный файл {filepath} не найден.")
             sys.exit(1)
             

@@ -1,8 +1,8 @@
 Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap _Code;Remap _Color;Remap _LOD
 5111; motorway ;Orange;1000; roads ; highway=motorway ;Motorway/freew;5111;Orange;1000
-5112; trunk ;Orange;1000; roads ; highway=trunk ;Important road;5112;Orange;1000
+5112; trunk ;Yellow ;1000; roads ; highway=trunk ;Important road;5112;Yellow ;1000
 5113; primary ;Yellow ;1000; roads ; highway=primary ;Primary roads,;5113;Yellow ;1000
-5114; secondary ;Yellow ;1000; roads ; highway=secondary ;Secondary road;5114;Yellow ;1000
+5114; secondary ;Gray;1000; roads ; highway=secondary ;Secondary road;5114;Gray;1000
 5115; tertiary ;Gray;500; roads ; highway=tertiary ;Tertiary roads;5115;Gray;500
 5121; unclassified ;Gray;100; roads ; highway=unclassified ;Smaller local;5121;Gray;100
 5122; residential ;Gray;100; roads ; highway=residential ;Roads in resid;5122;Gray;100
@@ -10,9 +10,9 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap _Code;Remap _Color;
 5124; pedestrian ;Gray;100; roads ; highway=pedestrian ;Pedestrian onl;5124;Gray;100
 5125; busway ;Gray;100; roads ; highway=busway ;Dedicated road;5125;Gray;100
 5131; motorway_link ;Orange;500; roads ; highway=motorway_link ;Roads that con;5131;Orange;500
-5132; trunk_link ;Orange;500; roads ; highway=trunk_link ;Roads that con;5132;Orange;500
+5132; trunk_link ;Yellow ;500; roads ; highway=trunk_link ;Roads that con;5132;Yellow ;500
 5133; primary_link ;Yellow ;500; roads ; highway=primary_link ;Roads that con;5133;Yellow ;500
-5134; secondary_link ;Yellow ;500; roads ; highway=secondary_link ;Roads that con;5134;Yellow ;500
+5134; secondary_link ;Gray;500; roads ; highway=secondary_link ;Roads that con;5134;Gray;500
 5135; tertiary_link ;Gray;500; roads ; highway=tertiary_link ;Roads that con;5135;Gray;500
 5141; service ;Gray;50; roads ; highway=service ;Service roads;5141;Gray;50
 5142; track ;Gray;50; roads ; highway=track;For agricultur;5142;Gray;50
@@ -26,7 +26,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap _Code;Remap _Color;
 5153; footway ;Gray;20; roads ; highway=footway;Footpaths;5153;Gray;20
 5154; path ;Gray;20; roads ; highway=path;Unspecified pa;5154;Gray;20
 5155; steps ;Gray;20; roads ; highway=steps ;Flights of ste;5155;Gray;20
-5199; unknown ;Gray;20; roads ; highway=road ;Unknown type;5199;Gray;20
+5199; unknown ;Gray;50; roads ; highway=road ;Unknown type;5199;Gray;50
 7201; forest ; Green ;500; landuse ; landuse=forest;A forest or wo;7201; Green ;500
 7201; wood ; Green ;500; landuse ; natural=wood;Wood;7201; Green ;500
 7202; park ; Green ;500; landuse ; leisure=park;A park.;7202; Green ;500
@@ -143,7 +143,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap _Code;Remap _Color;
 2516;butcher;Black;100;pois;shop=butcher;A butcher.;2516;Black;100
 2517;shoe_shop;Black;100;pois;shop=shoes;A shoe shop.;2517;Black;100
 2518;beverages;Black;100;pois;shop=beverages;A place where y;2518;Black;100
-2518;alcohol;Black;100;pois;shop=alcohol;"Alcohol shop";2518;Black;100
+2518;alcohol;Black;100;pois;shop=alcohol;Alcohol shop;2518;Black;100
 2519;optician;Black;100;pois;shop=optician;A place where y;2519;Black;100
 2520;jeweller;Black;100;pois;shop=jewelry;A jewelry shop.;2520;Black;100
 2521;gift_shop;Black;100;pois;shop=gift;A gift shop.;2521;Black;100
@@ -210,7 +210,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap _Code;Remap _Color;
 2962;water_well;Black;100;pois;man_made=water_well;A facility to a;2962;Black;100
 2963;water_mill;Black;100;pois;man_made=watermill;A mill driven b;2963;Black;100
 2964;water_works;Black;100;pois;man_made=water_works;A place where d;2964;Black;100
-3000;place_of_worship;Black;100;pois;amenity=place_of_worship;"Place of worship";3000;Black;100
+3000;place_of_worship;Black;100;pois;amenity=place_of_worship;Place of worship;3000;Black;100
 4101;spring;Black;100;pois;natural=spring;A spring, possi;4101;Black;100
 4103;glacier;Black;100;pois;natural=glacier;A glacier.;4103;Black;100
 4111;peak;Black;100;pois;natural=peak;A mountain peak;4111;Black;100
@@ -224,7 +224,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap _Code;Remap _Color;
 5202;mini_roundabout;Black;100;pois;highway=mini_roundabout;A small roundab;5202;Black;100
 5203;stop;Black;100;pois;highway=stop;A stop sign.;5203;Black;100
 5204;crossing;Black;100;pois;highway=crossing;A place where t;5204;Black;100
-5204;level_crossing;Black;100;pois;railway=level_crossing;"Level crossing";5204;Black;100
+5204;level_crossing;Black;100;pois;railway=level_crossing;Level crossing;5204;Black;100
 5205;ford;Black;100;pois;highway=ford;A place where t;5205;Black;100
 5206;motorway_junction;Black;100;pois;highway=motorway_junction;The place where;5206;Black;100
 5207;turning_circle;Black;100;pois;highway=turning_circle;An area at the;5207;Black;100
