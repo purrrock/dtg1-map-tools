@@ -24,8 +24,8 @@ LAT_CENTER = 53.7135
 LON_CENTER = 28.4194
 
 # Физические параметры сетки
-POLYGON_SIZE_METERS = 10  # Размер грани квадрата
-GAP_METERS = 1       # Зазор между соседними полигонами
+POLYGON_SIZE_METERS = 20  # Размер грани квадрата
+GAP_METERS = 5       # Зазор между соседними полигонами
 
 def get_landuse_features(csv_path="features_factory.csv"):
     landuse = []
