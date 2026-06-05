@@ -148,6 +148,47 @@ class MapFeature:
             self.v1, self.v2
         )
 
+
+import xml.etree.ElementTree as ET
+
+class GPXParser:
+    @staticmethod
+    def parse_track(filepath: str) -> Tuple[str, List[Tuple[float, float]]]:
+        """
+        Извлекает название маршрута и координаты (Lon, Lat) из GPX-файла.
+        Возвращает кортеж: (Имя_трека, Список_точек).
+        """
+        if not os.path.exists(filepath):
+            return "Route", []
+            
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        
+        # Стандартное пространство имен формата GPX 1.1
+        ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}
+        
+        # 1. Каскадный поиск имени трека
+        track_name = "Route" # Значение по умолчанию
+        
+        # Попытка №1: Глобальная метадата <metadata><name>
+        metadata_name = root.find('.//gpx:metadata/gpx:name', ns)
+        if metadata_name is not None and metadata_name.text:
+            track_name = metadata_name.text.strip()
+        else:
+            # Попытка №2: Локальное имя самого трека <trk><name>
+            trk_name = root.find('.//gpx:trk/gpx:name', ns)
+            if trk_name is not None and trk_name.text:
+                track_name = trk_name.text.strip()
+                
+        # 2. Извлечение геометрии
+        points = []
+        for trkpt in root.findall('.//gpx:trkpt', ns):
+            lat = float(trkpt.attrib['lat'])
+            lon = float(trkpt.attrib['lon'])
+            points.append((lon, lat))
+            
+        return track_name, points
+
 # ==============================================================================
 # МОДУЛЬ ПАРСИНГА ГЕОМЕТРИИ
 # ==============================================================================
@@ -575,6 +616,30 @@ def main():
 
     parser = OSMParser("map.osm")
     roads_data, landuse_data, pois_data = parser.parse()
+
+# --- БЛОК ИНЪЕКЦИИ GPX ---
+    gpx_file = "route.gpx"
+    if os.path.exists(gpx_file):
+        print(f"[>] Обнаружен файл маршрута {gpx_file}. Выполняется инъекция...")
+        
+        # Распаковываем полученный кортеж
+        track_name, track_points = GPXParser.parse_track(gpx_file)
+        
+        if track_points and len(track_points) >= 2:
+            # Создаем объект дороги из трека
+            gpx_feature = MapFeature(
+                osm_id="user_track_001",
+                fclass="gpx_track",
+                code=5111, # Наш зарезервированный оранжевый цвет
+                name=track_name,  # Динамическое имя из XML-тегов
+                points=track_points
+            )
+            gpx_feature.calculate_bbox()
+            # Внедряем объект в слой дорог перед компиляцией
+            roads_data.append(gpx_feature)
+            print(f"    Трек '{track_name}' успешно интегрирован (Точек: {len(track_points)}).")
+    # --------------------------
+    
     meta_all: List[MapFeature] = []
 
     # 1. Компиляция слоя Дорог
