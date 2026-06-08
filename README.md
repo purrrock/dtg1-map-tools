@@ -1,93 +1,113 @@
+🇷🇺 [Читать на русском](README_ru.md)
 # DT G1 Map Tools (ATS3085S Platform)
 
-Набор утилит на Python для реверс-инжиниринга, анализа и компиляции кастомных оффлайн-карт для смарт-часов **DT NO.1 G1** (и других устройств на базе аппаратной платформы **ATS3085S**).
+A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for the **DT NO.1 G1** smartwatches (and other devices based on the **ATS3085S** hardware platform).
 
-Проект представляет собой полностью открытую реализацию компилятора и декомпилятора закрытого бинарного картографического формата. Инструментарий позволяет извлекать заводские карты в формат GeoJSON, а также собирать собственные карты из открытых источников (например, OpenStreetMap), которые аппаратно поддерживаются и рендерятся прошивкой часов.
+The project is a fully open-source implementation of a compiler and decompiler for a closed binary map format. The toolset allows extracting factory maps into GeoJSON format, as well as building custom maps from open sources (e.g., OpenStreetMap), which are hardware-supported and rendered by the watch's firmware.
 
-## ⚠️ Дисклеймер
-> Это неофициальный проект, созданный исключительно методом реверс-инжиниринга ("черного ящика" и побайтового анализа дампов памяти). Использование утилит и загрузка модифицированных файлов в часы осуществляется на ваш страх и риск.
+> **⚠️ Disclaimer** > This is an unofficial project created exclusively through reverse engineering ("black box" and byte-by-byte analysis of map dumps). The use of the utilities and flashing of modified files to the watch is done at your own risk.
 
-## Состав инструментария
+---
 
-На данный момент кодовая база обеспечивает стопроцентную бинарную совместимость с аппаратным парсером часов и включает в себя:
+## Toolkit Composition
 
-* `dtg1_map_specification.md` — **Техническая спецификация формата.** Внимание: полная документация по структуре бинарников вынесена в этот отдельный файл. Он содержит побайтовую структуру файлов `.mlp`, `.idx`, `.db`, спецификацию архитектуры C-Union, режимы переключения LOD и алгоритмы парсинга графического движка прошивки.
-* `dtg1_map_compiler.py` — Компилятор векторных карт. Автоматически парсит исходный XML-файл OpenStreetMap (`map.osm`), выполняет валидацию топологии, распределяет объекты по уровням детализации, применяет алиасинг стилей и генерирует готовые пакеты файлов.
-* `features.csv` — Модифицируемая таблица маршрутизации стилей (LUT) с поддержкой программного отсечения (Blacklist).
-* `features_factory.csv` — Оригинальный дамп заводской таблицы стилей (для бэкапа и сброса к заводским параметрам отображения).
+Currently, the codebase provides 100% binary compatibility with the hardware parser of the watch and includes:
 
-## Установка
+* `dtg1_map_specification.md` — **Technical format specification.** Note: the full documentation on the binary structure is moved to this separate file. It contains the byte-by-byte structure of `.mlp`, `.idx`, and `.db` files, the specification of the C-Union architecture, LOD switching modes, and the parsing algorithms of the firmware's graphics engine.
+* `dtg1_map_compiler.py` — Vector map compiler. Automatically parses the source OpenStreetMap XML file (`map.osm`), performs topology validation, distributes objects by levels of detail, applies style aliasing, and generates ready-to-use file packages.
+* `features.csv` — Modifiable style routing table (LUT) with software culling (Blacklist) support.
+* `features_factory.csv` — Original dump of the factory style table (for backup and resetting to factory display parameters).
 
-1. минимально необходимые для сборки кастомних карт файлы:
-   `dtg1_map_compiler.py`
-   `features.csv`
+---
 
-2. Убедитесь, что у вас установлен Python 3.8 или выше. Дополнительные сторонние зависимости не требуются (проект использует исключительно встроенные библиотеки: `os`, `struct`, `xml.etree`, `csv`, `math`, `argparse`).
+## 📸 Comparison: Factory Map vs. Custom Compiled Map
 
-## Использование
+| Factory Map | Custom Compiled Map | Custom Compiled Map with Route|
+| :---: | :---: | :---: |
+| <img src="assets/factory_map.jpg" width="300"/> | <img src="assets/custom_map.jpg" width="300"/> | <img src="assets/gpx_injection.jpg" width="300"/> |
 
-### Быстрый старт
-1. Экспортируйте нужный участок карты с [OpenStreetMap](https://www.openstreetmap.org/export) в формате XML.
-2. Переименуйте скачанный файл в `map.osm` и положите в папку с компилятором.
-3. Запустите скрипт компиляции (по умолчанию точечные объекты будут проигнорированы для экономии памяти):
-   ```bash
-   python dtg1_map_compiler.py
-   ```
-4. Скомпилированные файлы (`roads.mlp`, `roads.idx`, `landuse.db`, `map.name` и др.) появятся в текущей директории.
-5. Скопируйте сгенерированные файлы во внутреннюю память часов (обычно в папку `MAP/Имя_карты` через USB-подключение).
 
-### Параметры командной строки (CLI)
-Компилятор поддерживает управление генерацией карт через аргументы командной строки. На данный момент реализовано управление слоем точечных объектов (POI), который имеет архитектурную аномалию и аппаратные ограничения графического движка ATS3085S (движок текущих версий прошивок подавляет вывод слоя `pois`).
+## Installation and Quick Start
 
-Синтаксис запуска:
+1.  Ensure you have Python 3.8 or higher installed. No additional third-party dependencies are required (the project exclusively uses built-in modules: `os`, `struct`, `xml.etree`, `csv`, `math`, `argparse`).
+2.  Export the desired map area from [OpenStreetMap](https://www.openstreetmap.org/export) in XML format.
+3.  Rename the downloaded file to `map.osm` and place it in the compiler directory.
+4.  The minimum files required for the build are: `dtg1_map_compiler.py` and `features.csv`.
+5.  Run the compilation script. The compiled files (`roads.mlp`, `roads.idx`, `landuse.db`, `map.name`, etc.) will appear in the current directory.
+6.  Copy the generated files to the internal memory of the watch (usually into the `MAP/Map_Name` folder via USB connection).
+
+---
+
+## Command Line Interface (CLI) Parameters
+
+The compiler supports build pipeline management via the built-in `argparse` module. Currently, it implements the management of the Points of Interest (POI) layer, the output of which is hardware-suppressed by the ATS3085S graphics engine in current firmware versions.
+
+**Launch syntax:**
 ```bash
-python dtg1_map_compiler.py [аргументы]
+python dtg1_map_compiler.py [arguments]
 ```
 
-Доступные ключи:
-* `-h`, `--help` — Вывод справочной информации по доступным аргументам.
-* `-p MODE`, `--poi-mode MODE` — Режим генерации базы точечных объектов (POI).
-  * `none` *(по умолчанию)* — Полностью игнорировать POI при сборке. Рекомендуется для большинства карт, так как предотвращает раздувание SQT-индексов и экономит буфер SRAM микроконтроллера.
-  * `native` — Сгенерировать оригинальные бинарники `pois.idx` и `pois.db` в соответствии спецификации (используется 1-based индексирование и обнуление указателя `v1`). Полезно для реверс-инжиниринга и тестирования реакции прошивки.
-  * `landuse` — *(Функция в разработке)* Интеграция POI в слой землепользования. Заменяет точки на искусственные небольшие полигоны, обходя аппаратные ограничения и обеспечивая вывод точечных объектов на экран в виде геометрических примитивов.
+**Available flags:**
+* `-h`, `--help` — Output reference information on available arguments.
+* `-p MODE`, `--poi-mode MODE` — Generation mode for the Points of Interest (POI) database.
+    * `none` *(default)* — Completely ignore POIs during the build. Protects the database from bloating.
+    * `native` — Generate original `pois.idx` and `pois.db` binaries. Useful for testing firmware reaction.
+    * `landuse` — Integrate POIs into the landuse layer.
 
-## Кастомизация стилей и Фильтрация объектов
+---
 
-Файл `features.csv` (Look-Up Table) является главным конфигурационным файлом компилятора. Он загружается динамически при каждом запуске.
+## Style Customization and Object Filtering
 
-### Структура таблицы LUT (11 столбцов)
-Поля разделяются точкой с запятой (`;`).
-Формат заголовка: 
-`Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LOD;Enabled`
+The `features.csv` file (Look-Up Table) is the main configuration file of the compiler. It is loaded dynamically upon each launch.
 
-Особое значение имеют параметры ремаппинга (алиасинга):
-* **Remap_Code:** Системный 32-битный ID, в который будет принудительно сконвертирован объект. Позволяет маппить теги OSM в отличные от заводских стили и цвета.
-* **Remap_LOD:** Дистанция аппаратного скрытия Z-Culling (в метрах), на которой объект появится на экране при масштабировании (например, `1000`, `500`, `100`).
+### LUT Table Structure (11 columns)
 
-### Программное отсечение (Blacklist)
-Для защиты графического конвейера часов от переполнения и ускорения рендеринга реализована система программного отсечения на этапе парсинга (Software Culling).
-За фильтрацию отвечает 11-й столбец конфигурации — **`Enabled`**.
+The configuration consists of 11 columns separated by a semicolon (`;`).
+**Header format:**
+```text
+Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LOD;Enabled
+```
 
-* `1` (или `true`) — Объект загружается в компилятор и участвует в формировании карт.
-* `0` (или `false`) — Заглушенный класс. Класс объекта заносится в глобальный Blacklist. `OSMParser` совершает "Early Exit" (немедленный выход) при встрече этого тега: он отбрасывает XML-узел, не кэширует его координаты и не тратит процессорное время на вычисление геометрии Bounding Box.
+**Remapping (aliasing) parameters are of particular importance:**
+* **Remap_Code:** The system 32-bit ID into which the object will be forcibly converted. 
+    * *Example:* Paved roads are mapped to the yellow color ID 5113.
+* **Remap_LOD:** The hardware Z-Culling hide distance (in meters) at which the object will appear on the screen when zooming.
 
-*Пример оптимизации:* Для похода можно оставить видимыми только нужные типы дорог, мелкие ручьи и лишние POI отключить, установив для них `Enabled = 0`. Это радикально снизит размер файлов `.mlp` и `.idx` и поднимет FPS на часах.
+### Software Culling (Blacklist)
 
-## Инъекция пользовательских маршрутов (GPX)
+To protect the watch's graphics pipeline from RAM overflow and `.idx` binary graph bloating, a software culling system is implemented during the stream parsing stage. The 11th column of the configuration — **`Enabled`** — is responsible for filtering.
 
-Компилятор поддерживает прямое внедрение навигационных треков поверх базовой карты.
+* **`1` (or `true`)** — The object is loaded into the compiler and participates in map generation.
+* **`0` (or `false`)** — Muted class. Hardware-culled. 
+
+The algorithm utilizes an Early Exit parsing interrupt: upon encountering a tag with the `Enabled=0` value, the `OSMParser` immediately discards the XML node prior to calculating the Bounding Box. This saves CPU time and prevents replacing excluded objects with default gray or green styles.
+
+---
+
+## Custom Route Injection (GPX)
+
+The compiler supports direct injection of navigation tracks on top of the base map.
     
-1. Поместите ваш файл маршрута с именем `route.gpx` в корневую директорию проекта.
-2. Запустите сборку. Скрипт автоматически найдет трек и извлечет его название из тега `<name>`. Извлеченная строка компилируется в атрибутивную базу данных `roads.db`, благодаря чему трек сохраняет на часах свое оригинальное имя.
-3. Внедренный GPX-трек преобразуется в объект `MapFeature` со специфическим типом `5111` (Motorway). Данный код аппаратно зарезервирован в прошивке часов под отрисовку жирной, контрастной оранжевой линией. Чтобы плановый маршрут не сливался с реальными автомагистралями, все объекты `motorway` из исходного OSM-файла принудительно даунскейлятся до желтого типа `5112` (Trunk) через подмену кодов в `features.csv`.
+1.  Place your route file named `route.gpx` in the root directory of the project.
+2.  Run the build. The script will automatically find the track and extract its name from the `<name>` tag. The extracted string is compiled into the `roads.db` attribute database, ensuring the track retains its original name on the watch.
+3.  The injected GPX track is converted into an object with the specific type `5111` (Motorway). This code is hardware-reserved in the watch's firmware for rendering a bold, contrasting orange line. To prevent the planned route from blending with actual motorways, all `motorway` objects from the source OSM file are forcibly downscaled to the yellow type `5112` (Trunk) via code substitution in `features.csv`.
 
-*Для отключения инъекции и сборки чистой карты достаточно удалить или переименовать файл `route.gpx` в корневом каталоге компилятора перед запуском.*
+> **Note:** To disable injection and build a clean map, simply delete or rename the `route.gpx` file in the compiler's root directory before launching.
 
-## Возврат к заводским настройкам (Factory Reset)
+---
 
-Оригинальная таблица стилей, построенная путем реверс-инжиниринга, сохранена в эталонном файле `features_factory.csv`.
+## Factory Reset
 
-Для отмены всех пользовательских модификаций цветов, блэклистов и уровней детализации:
-1. Удалите текущий модифицированный рабочий файл `features.csv`.
-2. Сделайте копию файла `features_factory.csv` и переименуйте ее в `features.csv`.
-3. Запустите скрипт сборки `python dtg1_map_compiler.py` для перекомпиляции бинарных файлов `.mlp` и `.idx` с заводскими значениями параметров.
+The original style table, built through reverse engineering, is preserved in the reference file `features_factory.csv`.
+
+To revert all user modifications to colors, blacklists, and levels of detail:
+1.  Delete the currently modified working file `features.csv`.
+2.  Make a copy of the `features_factory.csv` file and rename it to `features.csv`.
+3.  Run the build script `python dtg1_map_compiler.py` to recompile the `.mlp` and `.idx` binaries with factory parameter values.
+
+## 🛠 Reverse Engineering Tools (/tools)
+The repository includes internal scripts used during the reverse engineering of the ATS3085S graphics pipeline:
+
+dtg1_idx_dumper.py — A decompiler that extracts .idx spatial indices into readable CSV formats for binary analysis.
+roads_fuzzer.py — Generates a coordinate grid of geometric primitives to test hardware Z-Index rendering and C-Union structural limits.
+And other tools.

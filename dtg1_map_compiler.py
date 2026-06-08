@@ -5,18 +5,18 @@
 DT G1 Map Compiler (Platform ATS3085S)
 ===============================================
 v3.0 (POI Layer Update)
-Компилятор векторных данных OpenStreetMap (OSM) в закрытые бинарные форматы
-смарт-часов DT NO.1 G1 (.mlp, .idx, .db).
+Compiler of OpenStreetMap (OSM) vector data into closed binary formats
+of DT NO.1 G1 smartwatches (.mlp, .idx, .db).
 
-Архитектурные особенности платформы ATS3085S:
-  1. Flat List State Machine: SQT-индекс генерируется плоским списком, а не деревом.
-  2. Non-Zero Winding Rule: Внутренние контуры полигонов - CCW, внешние - CW.
-  3. Z-Culling (LOD): Аппаратное скрытие объектов по 3 уровням детализации.
-  4. System Dummies: Hex-пустышки (Payload Size = 0) для обхода EOF-защиты прошивки.
-  5. C-Union Node Architecture: Навигационные узлы и узлы данных (28 байт).
-  6. POI Topology Anomaly: Слой точек (pois) не имеет файла .mlp. Координаты 
-     инкапсулируются в BBox узла данных, указатель v1 обнуляется, а база атрибутов .db 
-     маппится без пустой записи 0 (1-based index).
+Architectural features of the ATS3085S platform:
+  1. Flat List State Machine: SQT index is generated as a flat list, not a tree.
+  2. Non-Zero Winding Rule: Internal polygon contours are CCW, external are CW.
+  3. Z-Culling (LOD): Hardware object hiding by 3 levels of detail.
+  4. System Dummies: Hex dummies (Payload Size = 0) to bypass firmware EOF protection.
+  5. C-Union Node Architecture: Navigation nodes and data nodes (28 bytes).
+  6. POI Topology Anomaly: The points layer (pois) has no .mlp file. Coordinates 
+     are encapsulated in the Data Node BBox, the v1 pointer is zeroed, and the .db 
+     attributes database is mapped without an empty 0 record (1-based index).
 """
 
 import os
@@ -31,18 +31,18 @@ from typing import List, Tuple, Dict, Optional, Any
 import argparse
 
 # ==============================================================================
-# КОНФИГУРАЦИЯ И СИСТЕМНЫЕ КОНСТАНТЫ
+# CONFIGURATION AND SYSTEM CONSTANTS
 # ==============================================================================
 
 class HWConfig:
-    """Аппаратные константы платформы ATS3085S"""
+    """Hardware constants of the ATS3085S platform"""
     YZL_HEADER_SIZE = 32
-    NODE_SIZE = 28           # Унифицированный размер узла (Data Node и Nav Node)
-    CHUNK_SIZE = 14          # Максимум объектов в кластере (ограничение буфера)
+    NODE_SIZE = 28           # Unified node size (Data Node and Nav Node)
+    CHUNK_SIZE = 14          # Maximum objects in a cluster (buffer limit)
     DBF_HEADER_LEN = 161     # dBase III Fixed Header
     DBF_RECORD_LEN = 145     # dBase III Fixed Record
     
-    # Системные константы LUT
+    # System LUT constants
     WATER_CODE = 8200
     DEFAULT_HIGHWAY_CODE = 5142
     DEFAULT_POLYGON_CODE = 7208
@@ -50,23 +50,23 @@ class HWConfig:
 
 
 class LookupTables:
-    """Динамические словари стилей (LUT), загружаемые из внешнего CSV."""
+    """Dynamic style dictionaries (LUT), loaded from an external CSV."""
     HIGHWAY_CODES: Dict[str, int] = {}
     POLYGON_CODES: Dict[str, int] = {}
     POI_CODES: Dict[str, int] = {}
     DISPLAY_SCALES: Dict[int, int] = {}
-    DISABLED_FCLASSES: set = set()  # Новый глобальный реестр отключенных классов
+    DISABLED_FCLASSES: set = set()  # New global registry of disabled classes
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
-        # Парсинг внешнего файла стилей. Формат столбцов: 
+        # Parsing external style file. Column format: 
         # [0]Code [1]fclass ... [7]Remap_Code [8]Remap_Color [9]Remap_LOD [10]Enabled
 
         if not os.path.exists(filepath):
-            print(f"[-] Ошибка: Конфигурационный файл {filepath} не найден.")
+            print(f"[-] Error: Configuration file {filepath} not found.")
             sys.exit(1)
             
-        print(f"[>] Загрузка таблицы стилей LUT из {filepath}...")
+        print(f"[>] Loading LUT style table from {filepath}...")
         
         try:
             with open(filepath, mode='r', encoding='utf-8') as f:
@@ -75,17 +75,17 @@ class LookupTables:
                 
                 loaded_records = 0
                 for row in reader:
-                    if len(row) < 11: # Расширено до 11 столбцов
+                    if len(row) < 11: # Expanded to 11 columns
                         continue
                         
                     fclass = row[1].strip()
                     layer = row[4].strip()
                     
-                    # Считывание флага Enabled. Любое из этих значений отключает класс.
+                    # Reading the Enabled flag. Any of these values disables the class.
                     enabled_flag = row[10].strip().lower()
                     if enabled_flag in ('0', 'false', 'no', 'off', ''):
                         cls.DISABLED_FCLASSES.add(fclass)
-                        continue  # Пропускаем добавление объекта в активные словари маппинга
+                        continue  # Skip adding the object to active mapping dictionaries
                     
                     try:
                         remap_code = int(row[7].strip())
@@ -105,24 +105,24 @@ class LookupTables:
                         
                     loaded_records += 1
                     
-            print(f"    Успешно импортировано правил: {loaded_records}")
-            print(f"[i] LUT загружен. Дорог: {len(cls.HIGHWAY_CODES)}, Полигонов: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
-            print(f"[i] Объектов в Blacklist: {len(cls.DISABLED_FCLASSES)}")
+            print(f"    Successfully imported rules: {loaded_records}")
+            print(f"[i] LUT loaded. Roads: {len(cls.HIGHWAY_CODES)}, Polygons: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
+            print(f"[i] Objects in Blacklist: {len(cls.DISABLED_FCLASSES)}")
 
             if HWConfig.WATER_CODE not in cls.DISPLAY_SCALES:
                 cls.DISPLAY_SCALES[HWConfig.WATER_CODE] = 1000
                 
         except Exception as e:
-            print(f"[-] Фатальная ошибка парсинга {filepath}: {e}")
+            print(f"[-] Fatal parsing error {filepath}: {e}")
             sys.exit(1)
 
 # ==============================================================================
-# МОДЕЛИ ДАННЫХ
+# DATA MODELS
 # ==============================================================================
 
 @dataclass
 class MapFeature:
-    """Описывает единичный картографический примитив"""
+    """Describes a single cartographic primitive"""
     osm_id: str
     fclass: str
     code: int
@@ -131,13 +131,13 @@ class MapFeature:
     parts: List[int] = field(default_factory=lambda: [0])
     
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
-    v1: int = 0        # Абсолютное смещение геометрии в файле .mlp
-    v2: int = 0        # Индекс строки в БД атрибутов .db
-    mlp_size: int = 0  # Размер бинарного тела в .mlp
+    v1: int = 0        # Absolute geometry offset in the .mlp file
+    v2: int = 0        # Row index in the .db attributes DB
+    mlp_size: int = 0  # Binary body size in .mlp
 
     def calculate_bbox(self) -> None:
-        """Вычисляет ограничивающий прямоугольник (Bounding Box) объекта.
-        Для слоя POI (1 точка) minX=maxX и minY=maxY автоматически."""
+        """Calculates the Bounding Box of an object.
+        For the POI layer (1 point) minX=maxX and minY=maxY automatically."""
         minx = min(p[0] for p in self.points)
         miny = min(p[1] for p in self.points)
         maxx = max(p[0] for p in self.points)
@@ -146,9 +146,9 @@ class MapFeature:
 
     def pack_data_node(self) -> bytes:
         """
-        Упаковка Узла Данных (Data Node). Строго 28 байт.
-        Формат (C-Union): [BBox 16b] [Type 4b] [v1 4b] [v2 4b]
-        Смещение +20 и +24 зарезервировано для универсального чтения ссылок парсером.
+        Packing the Data Node. Strictly 28 bytes.
+        Format (C-Union): [BBox 16b] [Type 4b] [v1 4b] [v2 4b]
+        Offsets +20 and +24 are reserved for universal reference reading by the parser.
         """
         return struct.pack(
             "<ffffIII", 
@@ -164,8 +164,8 @@ class GPXParser:
     @staticmethod
     def parse_track(filepath: str) -> Tuple[str, List[Tuple[float, float]]]:
         """
-        Извлекает название маршрута и координаты (Lon, Lat) из GPX-файла.
-        Возвращает кортеж: (Имя_трека, Список_точек).
+        Extracts route name and coordinates (Lon, Lat) from a GPX file.
+        Returns a tuple: (Track_name, List_of_points).
         """
         if not os.path.exists(filepath):
             return "Route", []
@@ -173,23 +173,23 @@ class GPXParser:
         tree = ET.parse(filepath)
         root = tree.getroot()
         
-        # Стандартное пространство имен формата GPX 1.1
+        # Standard GPX 1.1 namespace
         ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}
         
-        # 1. Каскадный поиск имени трека
-        track_name = "Route" # Значение по умолчанию
+        # 1. Cascading search for the track name
+        track_name = "Route" # Default value
         
-        # Попытка №1: Глобальная метадата <metadata><name>
+        # Attempt #1: Global metadata <metadata><name>
         metadata_name = root.find('.//gpx:metadata/gpx:name', ns)
         if metadata_name is not None and metadata_name.text:
             track_name = metadata_name.text.strip()
         else:
-            # Попытка №2: Локальное имя самого трека <trk><name>
+            # Attempt #2: Local name of the track itself <trk><name>
             trk_name = root.find('.//gpx:trk/gpx:name', ns)
             if trk_name is not None and trk_name.text:
                 track_name = trk_name.text.strip()
                 
-        # 2. Извлечение геометрии
+        # 2. Geometry extraction
         points = []
         for trkpt in root.findall('.//gpx:trkpt', ns):
             lat = float(trkpt.attrib['lat'])
@@ -199,11 +199,11 @@ class GPXParser:
         return track_name, points
 
 # ==============================================================================
-# МОДУЛЬ ПАРСИНГА ГЕОМЕТРИИ
+# GEOMETRY PARSING MODULE
 # ==============================================================================
 
 class OSMParser:
-    """Двухпроходный потоковый парсер OSM с обработкой топологии"""
+    """Two-pass streaming OSM parser with topology processing"""
     
     def __init__(self, osm_file: str):
         self.osm_file = osm_file
@@ -229,15 +229,15 @@ class OSMParser:
         return self.roads, self.landuse, self.pois
 
     def _pass1_cache_nodes(self) -> None:
-        print("[>] Проход 1: Кэширование узлов (nodes)...")
+        print("[>] Pass 1: Caching nodes...")
         for event, elem in ET.iterparse(self.osm_file, events=('start', 'end')):
             if event == 'end' and elem.tag == 'node':
                 self.nodes[elem.attrib['id']] = (float(elem.attrib['lon']), float(elem.attrib['lat']))
                 elem.clear()
-        print(f"    Загружено узлов: {len(self.nodes)}")
+        print(f"    Nodes loaded: {len(self.nodes)}")
 
     def _pass2_build_features(self) -> None:
-        print("[>] Проход 2: Нормализация геометрии, мультиполигонов и POI...")
+        print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
         context = ET.iterparse(self.osm_file, events=('end',))
         
         for event, elem in context:
@@ -251,7 +251,7 @@ class OSMParser:
                 self._process_node(elem)
                 elem.clear()
             
-        print(f"    Собрано: {len(self.roads)} дорог, {len(self.landuse)} полигонов, {len(self.pois)} точек (POI).")
+        print(f"    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).")
 
     def _extract_tags(self, elem: ET.Element) -> Dict[str, str]:
         return {
@@ -262,9 +262,9 @@ class OSMParser:
 
     def _process_node(self, elem: ET.Element) -> None:
         """
-        Парсинг точечных объектов (POI).
-        Обеспечивает программное отсечение по Blacklist и подготовку
-        геометрии узла для записи в 16-байтный BBox Data Node формата ATS3085S.
+        Parsing point objects (POI).
+        Provides programmatic clipping via Blacklist and node geometry preparation 
+        for writing to the 16-byte BBox Data Node of ATS3085S format.
         """
         tags = self._extract_tags(elem)
         if not tags: 
@@ -273,10 +273,10 @@ class OSMParser:
         fclass = None
         code = None
         
-        # Поиск совпадений тегов с таблицей маршрутизации (LUT)
+        # Search for tag matches with the routing table (LUT)
         for val in tags.values():
-            # Глухое отсечение: если класс имеет флаг Enabled = 0, 
-            # немедленно прерываем парсинг для экономии RAM
+            # Hard clipping: if the class has the Enabled = 0 flag, 
+            # immediately abort parsing to save RAM
             if val in LookupTables.DISABLED_FCLASSES:
                 return 
             
@@ -288,17 +288,17 @@ class OSMParser:
         if code is None:
             return
 
-        # Извлечение атрибутов узла
+        # Node attribute extraction
         name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
         osm_id = elem.attrib['id']
         
-        # Извлечение сырых координат из кэша (заполняется в _pass1_cache_nodes)
+        # Extract raw coordinates from cache (populated in _pass1_cache_nodes)
         node_coord = self.nodes.get(osm_id)
         if not node_coord:
             return
 
-        # Инициализация объекта. Для слоя pois массив points 
-        # всегда содержит строго одну координатную пару (lat, lon).
+        # Object initialization. For the pois layer, the points array 
+        # always contains strictly one coordinate pair (lat, lon).
         feature = MapFeature(
             osm_id=osm_id, 
             fclass=fclass,
@@ -307,9 +307,9 @@ class OSMParser:
             points=[node_coord]
         )
         
-        # Вызов метода calculate_bbox() для точки (X_min=X_max, Y_min=Y_max).
-        # Это необходимо для аппаратной совместимости, так как парсер часов
-        # читает координаты POI напрямую из полей Bounding Box узла данных.
+        # Call the calculate_bbox() method for a point (X_min=X_max, Y_min=Y_max).
+        # This is necessary for hardware compatibility, as the watch parser reads 
+        # POI coordinates directly from the Bounding Box fields of the data node.
         feature.calculate_bbox()
         self.pois.append(feature)
 
@@ -332,7 +332,7 @@ class OSMParser:
             if fclass == 'track' and 'tracktype' in tags:
                 fclass = fclass + '_' + tags['tracktype']
                 
-            # Проверка блэклиста перед присвоением дефолтных кодов
+            # Blacklist check before assigning default codes
             if fclass in LookupTables.DISABLED_FCLASSES:
                 return
                 
@@ -347,7 +347,7 @@ class OSMParser:
         elif ('landuse' in tags or 'leisure' in tags or 'natural' in tags) and len(points) >= 4:
             fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', 'unknown')))
             
-            # Проверка блэклиста для полигонов
+            # Blacklist check for polygons
             if fclass in LookupTables.DISABLED_FCLASSES:
                 return
                 
@@ -369,7 +369,7 @@ class OSMParser:
             
         fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', None)))
         
-        # Проверка блэклиста для мультиполигонов
+        # Blacklist check for multipolygons
         if not fclass or fclass in LookupTables.DISABLED_FCLASSES: 
             return
             
@@ -407,19 +407,19 @@ class OSMParser:
             self.landuse.append(feature)
 
 # ==============================================================================
-# МОДУЛЬ КОМПИЛЯЦИИ БИНАРНЫХ ФАЙЛОВ
+# BINARY COMPILATION MODULE
 # ==============================================================================
 
 class MapCompiler:
 
     @staticmethod
     def _write_yzl_container(filepath: str, payload: bytes, is_idx: bool, lod2_size: int = 0) -> None:
-        """Инкапсуляция данных в системный контейнер YZL"""
+        """Data encapsulation into the YZL system container"""
         payload_size = len(payload)
         md5_hash = hashlib.md5(payload).digest()
         
         if is_idx:
-            # Стандартный индекс геометрии
+            # Standard geometry index
             header = (
                 b'YZL\x08' + 
                 struct.pack("<I", payload_size) + 
@@ -428,8 +428,8 @@ class MapCompiler:
                 md5_hash
             )
         else:
-            # Используется для .mlp, .db и ВНИМАНИЕ: для pois.idx! 
-            # Архитектура POI требует базовой сигнатуры YZL\x00 для индекса.
+            # Used for .mlp, .db and ATTENTION: for pois.idx! 
+            # POI architecture requires basic YZL\x00 signature for the index.
             header = (
                 b'YZL\x00' + 
                 struct.pack("<I", payload_size) + 
@@ -447,7 +447,7 @@ class MapCompiler:
 
     @classmethod
     def compile_mlp(cls, features: List[MapFeature], filepath: str) -> None:
-        print(f"[>] Компиляция геометрии: {filepath}...")
+        print(f"[>] Compiling geometry: {filepath}...")
         bin_records = bytearray()
         record_number = 1
 
@@ -481,14 +481,14 @@ class MapCompiler:
         if not is_poi:
             has_named_features = any(feature.name for feature in features)
             if not has_named_features:
-                print(f"[~] Слой {filepath} не содержит именованных объектов. Создание .db файла пропущено.")
+                print(f"[~] Layer {filepath} contains no named objects. .db file creation skipped.")
                 for feature in features: feature.v2 = 0
                 return
         else:
             if not features:
                 return
     
-        print(f"[>] Компиляция атрибутов: {filepath}...")
+        print(f"[>] Compiling attributes: {filepath}...")
         
         def pad(text: Any, length: int) -> bytes:
             return str(text).encode('utf-8')[:length].ljust(length, b'\x00')
@@ -496,7 +496,7 @@ class MapCompiler:
         def desc(name: str, length: int) -> bytes:
             return name.encode('ascii').ljust(11, b'\x00') + b'C' + b'\x00'*4 + bytes([length]) + b'\x00'*15
         
-        # Слой POI использует 1-based indexing без пустой нулевой записи
+        # POI layer uses 1-based indexing without an empty zero record
         if is_poi:
             bin_records = bytearray()
             db_counter = 1
@@ -533,12 +533,12 @@ class MapCompiler:
 
     @classmethod
     def compile_idx(cls, features: List[MapFeature], filepath: str, is_poi: bool = False) -> None:
-        print(f"[>] Компиляция индекса SQT: {filepath}...")
+        print(f"[>] Compiling SQT index: {filepath}...")
         idx_buffer = bytearray()
         
         if is_poi:
-            # POI слой имеет уникальную топологию (отсутствие .mlp, хранение координат в BBox)
-            # Файл состоит строго из 1 уровня LOD с системным маркером по смещению +4 заголовка SQT
+            # POI layer has a unique topology (no .mlp, coordinates stored in BBox)
+            # File strictly consists of 1 LOD level with system marker at +4 offset of SQT header
             idx_buffer.extend(b'SQT\x01')
             idx_buffer.extend(b'\x01\x00\x00\x00') 
             
@@ -565,7 +565,7 @@ class MapCompiler:
                     idx_buffer.extend(cls.pack_nav_node(v3_jump, (c_minx, c_miny, c_maxx, c_maxy), 0, len(cluster)))                    
                     
                     for f in cluster:
-                        f.v1 = 0 # Физического смещения геометрии не существует
+                        f.v1 = 0 # No physical geometry offset exists
                         idx_buffer.extend(f.pack_data_node())
             else:
                 mode, count = 0, len(clusters[0]) if clusters else 0
@@ -575,11 +575,11 @@ class MapCompiler:
                     f.v1 = 0
                     idx_buffer.extend(f.pack_data_node())
 
-            # ВНИМАНИЕ: POI Index использует стандартный YZL\x00 (как у .mlp)
+            # ATTENTION: POI Index uses standard YZL\x00 (like .mlp)
             cls._write_yzl_container(filepath, idx_buffer, is_idx=False)
 
         else:
-            # Стандартная многоуровневая геометрия (LOD 0, 1, 2)
+            # Standard multi-level geometry (LOD 0, 1, 2)
             lod_filters = [
                 lambda c: True,
                 lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500, 
@@ -626,7 +626,7 @@ class MapCompiler:
 
     @staticmethod
     def create_empty_layer(layer_prefix: str) -> None:
-        print(f"[>] Создание системной Hex-заглушки: {layer_prefix}...")
+        print(f"[>] Creating system Hex dummy: {layer_prefix}...")
         mlp_hex = "595A4C00000000000000000400000000D41D8CD98F00B204E9800998ECF8427E"
         idx_hex = "595A4C10300000000000000400000010E5F9D2228804251B5F9E3EAB298C30E5535154010100000000000000000000005351540101000000000000000000000053515401010000000000000000000000"
         
@@ -646,7 +646,7 @@ class MapCompiler:
 # ==============================================================================
 
 def main():
-    # --- БЛОК АРГУМЕНТОВ КОМАНДНОЙ СТРОКИ ---
+    # --- COMMAND LINE ARGUMENTS BLOCK ---
     cli_parser = argparse.ArgumentParser(
         description="DT G1 Map Compiler (Platform ATS3085S) - Vector OSM to Binary YZL/SQT"
     )
@@ -654,18 +654,18 @@ def main():
         "-p", "--poi-mode",
         choices=["native", "landuse", "none"],
         default="none",
-        help="Режим генерации POI: 'native' (родной слой pois.idx/db), 'landuse' (интеграция полигонами), 'none' (игнорировать POI, по умолчанию)"
+        help="POI generation mode: 'native' (native pois.idx/db layer), 'landuse' (polygon integration), 'none' (ignore POI, default)"
     )
     args = cli_parser.parse_args()
     # ----------------------------------------
 
     if not os.path.exists("map.osm"):
-        print("[-] Ошибка: Файл map.osm не найден. Завершение работы.")
+        print("[-] Error: map.osm file not found. Terminating.")
         return
         
     print("=========================================")
     print("DT G1 MAP COMPILER")
-    print(f"Режим слоя POI: {args.poi_mode.upper()}")
+    print(f"POI layer mode: {args.poi_mode.upper()}")
     print("=========================================")
     
     LookupTables.load_from_csv("features.csv")
@@ -673,10 +673,10 @@ def main():
     parser = OSMParser("map.osm")
     roads_data, landuse_data, pois_data = parser.parse()
 
-    # --- БЛОК ИНЪЕКЦИИ GPX ---
+    # --- GPX INJECTION BLOCK ---
     gpx_file = "route.gpx"
     if os.path.exists(gpx_file):
-        print(f"[>] Обнаружен файл маршрута {gpx_file}. Выполняется инъекция...")
+        print(f"[>] Route file {gpx_file} detected. Performing injection...")
         
         track_name, track_points = GPXParser.parse_track(gpx_file)
         
@@ -690,19 +690,19 @@ def main():
             )
             gpx_feature.calculate_bbox()
             roads_data.append(gpx_feature)
-            print(f"    Трек '{track_name}' успешно интегрирован (Точек: {len(track_points)}).")
+            print(f"    Track '{track_name}' successfully integrated (Points: {len(track_points)}).")
     # --------------------------
     
     meta_all: List[MapFeature] = []
 
-    # 1. Компиляция слоя Дорог
+    # 1. Roads layer compilation
     if roads_data:
         MapCompiler.compile_mlp(roads_data, "roads.mlp")
         MapCompiler.compile_db(roads_data, "roads.db")
         MapCompiler.compile_idx(roads_data, "roads.idx")
         meta_all.extend(roads_data)
 
-    # 2. Разделение слоя Землепользования (Landuse и Water)
+    # 2. Landuse layer separation (Landuse and Water)
     landuse_only = [f for f in landuse_data if f.code != HWConfig.WATER_CODE]
     water_only = [f for f in landuse_data if f.code == HWConfig.WATER_CODE]
 
@@ -720,9 +720,9 @@ def main():
         MapCompiler.compile_idx(water_only, "water.idx")
         meta_all.extend(water_only)
 
-    # 3. Обработка слоя точек (POI) согласно параметрам CLI
+    # 3. Point layer (POI) processing according to CLI parameters
     if args.poi_mode == "none":
-        print("[>] Слой POI пропущен (выбран режим 'none').")
+        print("[>] POI layer skipped ('none' mode selected).")
         
     elif args.poi_mode == "native":
         if pois_data:
@@ -730,19 +730,18 @@ def main():
             MapCompiler.compile_idx(pois_data, "pois.idx", is_poi=True)
             meta_all.extend(pois_data)
         else:
-            print("[~] Точечные объекты (POI) отсутствуют в исходных данных.")
+            print("[~] Point objects (POI) are missing in the source data.")
             
     elif args.poi_mode == "landuse":
-        print("[>] Интеграция POI в слой landuse: функция находится в разработке (заглушка).")
-        # TODO: Реализовать конвертацию pois_data в полигоны
-        # и перераспределение их в массив landuse_only перед компиляцией.
+        print("[>] POI integration into landuse layer: feature in development (stub).")
+        # TODO: Implement pois_data to polygons conversion and redistribute them to the landuse_only array before compilation.
         pass
 
-    # 4. Общая центровка камеры
+    # 4. Global camera centering
     if meta_all:
         MapCompiler.create_map_name("DTG1_Map", meta_all, "map.name")
     
-    print("\n[УСПЕХ] Пакет карт скомпилирован успешно!")
+    print("\n[SUCCESS] Map package compiled successfully!")
 
 if __name__ == "__main__":
     main()

@@ -1,12 +1,18 @@
-__pycache__/
-*.geojson
+# Игнорировать исходные данные
 *.osm
+*.gpx
+
+# Игнорировать скомпилированные слои
+*.idx
 *.mlp
 *.db
-*.idx
 map.name
-.gpx
+
+# Игнорировать кэш Python
+__pycache__/
+*.pyc
+
+# Игнорировать прочее
+*.geojson
 promt.txt
-
-
-
+*.dmp
