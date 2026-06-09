@@ -90,8 +90,8 @@ class DTG1TopologyFuzzer:
 
 
 if __name__ == "__main__":
-    LAT_CENTER = 53.714055
-    LON_CENTER = 28.420172
+    LAT_CENTER = 53.70502
+    LON_CENTER = 28.41933
 
     fuzzer = DTG1TopologyFuzzer("map.osm")
     

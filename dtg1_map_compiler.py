@@ -702,7 +702,41 @@ def main():
         MapCompiler.compile_idx(roads_data, "roads.idx")
         meta_all.extend(roads_data)
 
-    # 2. Landuse layer separation (Landuse and Water)
+    # --- POI BAKING BLOCK ---
+    if args.poi_mode == "landuse" and pois_data:
+        print("[>] Baking POI objects into landuse layer as 5x15m stretched diamonds...")
+        import math
+        earth_radius = 6378137.0
+        radius_x = 5.0 / 2.0   # Width: 5 meters
+        radius_y = 15.0 / 2.0  # Height: 15 meters
+        
+        for poi in pois_data:
+            if not poi.points: 
+                continue
+                
+            lon, lat = poi.points[0]
+            
+            # Spherical delta calculation
+            d_lat = (radius_y / earth_radius) * (180.0 / math.pi)
+            d_lon = (radius_x / (earth_radius * math.cos(math.radians(lat)))) * (180.0 / math.pi)
+            
+            # CW Winding: North -> East -> South -> West -> Close(North)
+            poi.points = [
+                (lon, lat + d_lat),
+                (lon + d_lon, lat),
+                (lon, lat - d_lat),
+                (lon - d_lon, lat),
+                (lon, lat + d_lat)
+            ]
+            poi.code = 7209 # Hardcoded Pink style for commercial landuse
+            poi.calculate_bbox()
+            landuse_data.append(poi)
+            
+        print(f"    Successfully baked {len(pois_data)} POIs.")
+        pois_data.clear() # Clear array to prevent processing in native DB compiler
+    # ------------------------
+
+    # 2. Separating Landuse and Water layers
     landuse_only = [f for f in landuse_data if f.code != HWConfig.WATER_CODE]
     water_only = [f for f in landuse_data if f.code == HWConfig.WATER_CODE]
 
@@ -733,9 +767,7 @@ def main():
             print("[~] Point objects (POI) are missing in the source data.")
             
     elif args.poi_mode == "landuse":
-        print("[>] POI integration into landuse layer: feature in development (stub).")
-        # TODO: Implement pois_data to polygons conversion and redistribute them to the landuse_only array before compilation.
-        pass
+        print("[>] POI mode 'landuse' successfully handled. Objects baked into landuse.idx.")
 
     # 4. Global camera centering
     if meta_all:
