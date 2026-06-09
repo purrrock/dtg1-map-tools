@@ -37,7 +37,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 7206; cemetery ; Light-green ;200; landuse ; landuse=cemetery ;A cemetery or;7206; Light-green ;200;1
 7207; allotments ; Light-green ;200; landuse ; landuse=allotments ;An area with s;7207; Light-green ;200;1
 7208; meadow ; Light-green ;200; landuse ; landuse=meadow ;A meadow [cite;7208; Light-green ;200;0
-7209; commercial ; Pink ;200; landuse ; landuse=commercial ;A commercial a;7209; Pink ;200;0
+7209; commercial ; Pink ;200; landuse ; landuse=commercial ;A commercial a;7209; Pink ;1000;1
 7210; nature_reserve ; Light-green ;200; landuse ; leisure=nature_reserve ;Nature reserve;7210; Light-green ;200;1
 7211; recreation_ground ; Light-green ;200; landuse ;landuse=recreation_ground ;An open green;7211; Light-green ;200;1
 7212; retail ; Light-green ;200; landuse ; landuse=retail ;An area mainly;7212; Light-green ;200;1
