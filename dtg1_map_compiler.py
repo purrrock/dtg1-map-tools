@@ -35,7 +35,7 @@ import argparse
 # ==============================================================================
 
 class HWConfig:
-    """Hardware constants of the ATS3085S platform"""
+    #Hardware constants of the ATS3085S platform
     YZL_HEADER_SIZE = 32
     NODE_SIZE = 28           # Unified node size (Data Node and Nav Node)
     CHUNK_SIZE = 14          # Maximum objects in a cluster (buffer limit)
@@ -48,14 +48,17 @@ class HWConfig:
     DEFAULT_POLYGON_CODE = 7208
     DEFAULT_POI_CODE = 2724
 
-
 class LookupTables:
-    """Dynamic style dictionaries (LUT), loaded from an external CSV."""
+    #Dynamic style dictionaries (LUT) loaded from external CSV.
     HIGHWAY_CODES: Dict[str, int] = {}
     POLYGON_CODES: Dict[str, int] = {}
     POI_CODES: Dict[str, int] = {}
     DISPLAY_SCALES: Dict[int, int] = {}
-    DISABLED_FCLASSES: set = set()  # New global registry of disabled classes
+    
+    # Isolated blacklists to prevent fclass namespace collisions (e.g. 'residential')
+    DISABLED_ROADS: set = set()
+    DISABLED_LANDUSE: set = set()
+    DISABLED_POIS: set = set()
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
@@ -81,11 +84,16 @@ class LookupTables:
                     fclass = row[1].strip()
                     layer = row[4].strip()
                     
-                    # Reading the Enabled flag. Any of these values disables the class.
+                    # Read Enabled flag. Any of these values disables the class.
                     enabled_flag = row[10].strip().lower()
                     if enabled_flag in ('0', 'false', 'no', 'off', ''):
-                        cls.DISABLED_FCLASSES.add(fclass)
-                        continue  # Skip adding the object to active mapping dictionaries
+                        if layer == 'roads':
+                            cls.DISABLED_ROADS.add(fclass)
+                        elif layer == 'pois':
+                            cls.DISABLED_POIS.add(fclass)
+                        else:  # landuse, water
+                            cls.DISABLED_LANDUSE.add(fclass)
+                        continue  # Skip adding to active mapping dicts
                     
                     try:
                         remap_code = int(row[7].strip())
@@ -107,7 +115,7 @@ class LookupTables:
                     
             print(f"    Successfully imported rules: {loaded_records}")
             print(f"[i] LUT loaded. Roads: {len(cls.HIGHWAY_CODES)}, Polygons: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
-            print(f"[i] Objects in Blacklist: {len(cls.DISABLED_FCLASSES)}")
+            print(f"[i] Objects in Blacklist: {len(cls.DISABLED_ROADS) + len(cls.DISABLED_LANDUSE) + len(cls.DISABLED_POIS)}")
 
             if HWConfig.WATER_CODE not in cls.DISPLAY_SCALES:
                 cls.DISPLAY_SCALES[HWConfig.WATER_CODE] = 1000
@@ -275,10 +283,9 @@ class OSMParser:
         
         # Search for tag matches with the routing table (LUT)
         for val in tags.values():
-            # Hard clipping: if the class has the Enabled = 0 flag, 
-            # immediately abort parsing to save RAM
-            if val in LookupTables.DISABLED_FCLASSES:
-                return 
+             # Hard cutoff: if POI class is disabled, abort parsing immediately
+            if val in LookupTables.DISABLED_POIS:
+                return
             
             if val in LookupTables.POI_CODES:
                 fclass = val
@@ -290,6 +297,10 @@ class OSMParser:
 
         # Node attribute extraction
         name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
+        # Fallback for unnamed POIs: assign fclass to prevent blank polygons on the map
+        if not name and fclass:
+            name = str(fclass)
+        
         osm_id = elem.attrib['id']
         
         # Extract raw coordinates from cache (populated in _pass1_cache_nodes)
@@ -332,8 +343,8 @@ class OSMParser:
             if fclass == 'track' and 'tracktype' in tags:
                 fclass = fclass + '_' + tags['tracktype']
                 
-            # Blacklist check before assigning default codes
-            if fclass in LookupTables.DISABLED_FCLASSES:
+            # Check isolated roads blacklist to avoid dropping same-named landuse
+            if fclass in LookupTables.DISABLED_ROADS:
                 return
                 
             feature = MapFeature(
@@ -347,8 +358,8 @@ class OSMParser:
         elif ('landuse' in tags or 'leisure' in tags or 'natural' in tags) and len(points) >= 4:
             fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', 'unknown')))
             
-            # Blacklist check for polygons
-            if fclass in LookupTables.DISABLED_FCLASSES:
+            # Check isolated landuse blacklist
+            if fclass in LookupTables.DISABLED_LANDUSE:
                 return
                 
             if points[0] == points[-1]: 
@@ -369,8 +380,8 @@ class OSMParser:
             
         fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', None)))
         
-        # Blacklist check for multipolygons
-        if not fclass or fclass in LookupTables.DISABLED_FCLASSES: 
+        # Check isolated landuse blacklist for multipolygons
+        if not fclass or fclass in LookupTables.DISABLED_LANDUSE: 
             return
             
         name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
@@ -767,7 +778,7 @@ def main():
             print("[~] Point objects (POI) are missing in the source data.")
             
     elif args.poi_mode == "landuse":
-        print("[>] POI mode 'landuse' successfully handled. Objects baked into landuse.idx.")
+        print("[>] POI mode 'landuse' successfully handled. Objects baked into landuse layer.")
 
     # 4. Global camera centering
     if meta_all:
