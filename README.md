@@ -1,11 +1,13 @@
 🇷🇺 [Читать на русском](README_ru.md)
-# DT G1 Map Tools (ATS3085S Platform)
+# Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK (ATS3085S Platform)
 
-A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for the **DT NO.1 G1** smartwatches (and other devices based on the **ATS3085S** hardware platform).
+A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for **DT NO.1 G1**, **VWAR**, and **KKTICK** smartwatches (as well as other white-label devices based on the **Actions Semiconductor ATS3085S** hardware platform).
 
-The project is a fully open-source implementation of a compiler and decompiler for a closed binary map format. The toolset allows extracting factory maps into GeoJSON format, as well as building custom maps from open sources (e.g., OpenStreetMap), which are hardware-supported and rendered by the watch's firmware.
+If you are looking for **how to install custom maps on a smartwatch** or need better **DT NO.1 G1 offline maps** to sync via the **WearPro** app, this project provides a complete open-source solution. 
 
-> **⚠️ Disclaimer** > This is an unofficial project created exclusively through reverse engineering ("black box" and byte-by-byte analysis of map dumps). The use of the utilities and flashing of modified files to the watch is done at your own risk.
+The toolset allows building your own highly detailed maps from open sources (e.g., OpenStreetMap). These custom maps are natively hardware-supported and perfectly rendered by the watch's built-in graphics engine.
+
+> **⚠️ Disclaimer** > This is an unofficial project created exclusively through reverse engineering ("black box" and byte-by-byte analysis of memory dumps). The use of these utilities and flashing of modified files to the watch is done at your own risk.
 
 ---
 
