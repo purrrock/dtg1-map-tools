@@ -24,9 +24,9 @@ Currently, the codebase provides 100% binary compatibility with the hardware par
 
 ## 📸 Comparison: Factory Map vs. Custom Compiled Map
 
-| Factory Map | Custom Compiled Map | Custom Compiled Map with Route|
-| :---: | :---: | :---: |
-| <img src="assets/factory_map.jpg" width="300"/> | <img src="assets/custom_map.jpg" width="300"/> | <img src="assets/gpx_injection.jpg" width="300"/> |
+| Factory Map | Custom Compiled Map | Custom Map with Route| Custom Map with POIs|
+| :---: | :---: | :---: | :---: |
+| <img src="assets/factory_map.jpg" width="300"/> | <img src="assets/custom_map.jpg" width="300"/> | <img src="assets/gpx_injection.jpg" width="300"/> | <img src="assets/poi_injection.jpg" width="300"/> |
 
 
 ## Installation and Quick Start
@@ -42,7 +42,7 @@ Currently, the codebase provides 100% binary compatibility with the hardware par
 
 ## Command Line Interface (CLI) Parameters
 
-The compiler supports build pipeline management via the built-in `argparse` module. Currently, it implements the management of the Points of Interest (POI) layer, the output of which is hardware-suppressed by the ATS3085S graphics engine in current firmware versions.
+The compiler implements the management of the Points of Interest (POI) layer, the output of which is hardware-suppressed by the ATS3085S graphics engine in current firmware versions.
 
 **Launch syntax:**
 ```bash
@@ -54,7 +54,7 @@ python dtg1_map_compiler.py [arguments]
 * `-p MODE`, `--poi-mode MODE` — Generation mode for the Points of Interest (POI) database.
     * `none` *(default)* — Completely ignore POIs during the build. Protects the database from bloating.
     * `native` — Generate original `pois.idx` and `pois.db` binaries. Useful for testing firmware reaction.
-    * `landuse` — Integrate POIs into the landuse layer.
+    * `landuse` — Integrate POIs into the landuse layer (Pink diamonds).
 
 ---
 
