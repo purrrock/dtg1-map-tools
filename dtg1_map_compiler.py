@@ -55,7 +55,7 @@ _STOP_WORDS = (
     # Длина 10
     "restaurant",
     # Длина 9
-    "praspiekt", "boulevard", "pharmacy",
+    "praspiekt", "boulevard",
     # Длина 8
     "проспект", "переулок", "ресторан", "праспект", "рэстаран", 
     "praspekt", "stancyya", "prypynak", "restaran",
@@ -70,9 +70,9 @@ _STOP_WORDS = (
     "пр-кт", "шоссе", "аллея", "озеро", "сквер", "крама", 
     "blvd.", "drive", "alley", "hotel", "river", "pr-kt", "krama",
     # Длина 4
-    "кафе", "река", "парк", "шаша", "алея", "вул.", "зав.", 
-    "кафэ", "рака", "šaša", "vul.", "zav.", "kafe", "raka", 
-    "road", "lane", "cafe", "shop", "mall", "lake", "pond", "ave.",
+    "кафе", "парк", "шаша", "алея", "вул.", "зав.", 
+    "кафэ", "šaša", "vul.", "zav.", "kafe", 
+    "road", "lane", "cafe", "shop", "mall", "lake", "ave.",
     # Длина 3
     "ул.", "пер.", "пл.", "st.", "rd.", "ln.", "dr.", "sq.", 
     "way", "pl."
