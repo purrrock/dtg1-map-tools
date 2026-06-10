@@ -113,3 +113,11 @@ The repository includes internal scripts used during the reverse engineering of 
 dtg1_idx_dumper.py — A decompiler that extracts .idx spatial indices into readable CSV formats for binary analysis.
 roads_fuzzer.py — Generates a coordinate grid of geometric primitives to test hardware Z-Index rendering and C-Union structural limits.
 And other tools.
+
+## 🗺️ Roadmap & Future Plans (v1.1+)
+
+The core compilation engine is now stable (v1.0). Our next major goal is to transform this CLI tool into a user-friendly "Map-as-a-Service" platform for the smartwatch community.
+
+**Planned Features:**
+* [ ] **Pre-compiled Map Archives:** Regularly updated, ready-to-download map packages for entire countries or popular tourist regions. These will be hosted directly in GitHub Releases—no Python installation required for end-users.
+* [ ] **Web-based GUI Generator:** A browser-based interface where users can select a custom Bounding Box (up to 50x50 km), toggle specific layers/POIs, upload their GPX track for injection, and compile the map on-demand via a backend connected to the Overpass API.
