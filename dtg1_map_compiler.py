@@ -48,6 +48,36 @@ class HWConfig:
     DEFAULT_POLYGON_CODE = 7208
     DEFAULT_POI_CODE = 2724
 
+# Глобальный неизменяемый кортеж топонимических дескрипторов.
+# Вынесен из тела функции для предотвращения миллионных циклов аллокации памяти.
+# Строго отсортирован по убыванию длины для корректной работы алгоритма startswith.
+_STOP_WORDS = (
+    # Длина 10
+    "restaurant",
+    # Длина 9
+    "praspiekt", "boulevard", "pharmacy",
+    # Длина 8
+    "проспект", "переулок", "ресторан", "праспект", "рэстаран", 
+    "praspekt", "stancyya", "prypynak", "restaran",
+    # Длина 7
+    "площадь", "бульвар", "станция", "магазин", "завулак", 
+    "станцыя", "highway", "grocery", "station", "zavulak", "voziera",
+    # Длина 6
+    "вуліца", "плошча", "возера", "vulica", "plošča", "bulvar", 
+    "alieja", "skvier", "улица", "street", "avenue", "square", 
+    "shoppe", "market",
+    # Длина 5
+    "пр-кт", "шоссе", "аллея", "озеро", "сквер", "крама", 
+    "blvd.", "drive", "alley", "hotel", "river", "pr-kt", "krama",
+    # Длина 4
+    "кафе", "река", "парк", "шаша", "алея", "вул.", "зав.", 
+    "кафэ", "рака", "šaša", "vul.", "zav.", "kafe", "raka", 
+    "road", "lane", "cafe", "shop", "mall", "lake", "pond", "ave.",
+    # Длина 3
+    "ул.", "пер.", "пл.", "st.", "rd.", "ln.", "dr.", "sq.", 
+    "way", "pl."
+)
+
 class LookupTables:
     #Dynamic style dictionaries (LUT) loaded from external CSV.
     HIGHWAY_CODES: Dict[str, int] = {}
@@ -268,6 +298,50 @@ class OSMParser:
             if 'k' in child.attrib and 'v' in child.attrib
         }
 
+    @staticmethod
+    def sanitize_osm_name(name: str) -> str:
+        # Нормализует строку названия объекта...
+        # Нормализует строку названия объекта, переносит дескрипторы в конец 
+        #и экранирует пробелы для обхода бага рендеринга ATS3085S.
+
+        if not name:
+            return ""
+            
+        # Удаляем краевые пробелы, которые могли прийти из XML
+        name = name.strip()
+        name_lower = name.lower()
+        
+        # Поиск префикса по глобальному кортежу и инверсия порядка слов
+        for word in _STOP_WORDS:
+            # Ищем точное совпадение слова с пробелом, чтобы избежать ложных
+            # срабатываний (например, отрезания "река" в слове "Рекамендация")
+            prefix = word + " "
+            
+            if name_lower.startswith(prefix):
+                # Извлекаем основную часть названия (сдвиг указателя на длину префикса)
+                core_name = name[len(prefix):].strip()
+                
+                if core_name:
+                    # Поднимаем регистр первой буквы основной части
+                    core_name = core_name[0].upper() + core_name[1:]
+                    # Переносим дескриптор в конец (принудительно в нижнем регистре)
+                    name = f"{core_name} {word.lower()}"
+                break # После первой успешной инверсии прерываем цикл
+                
+        # Аппаратное экранирование (0x20 -> 0x5F)
+        # Гарантирует, что графический движок часов считает строку монолитной
+        name = name.replace(" ", "_")
+        
+        # Защита от переполнения буфера dBase III (смещение 0x2A, лимит 100 байт)
+        # Поскольку UTF-8 символы (кириллица) занимают 2 байта, проверяем длину 
+        # байтового массива, а не строковых символов. Резервируем 1 байт под null-терминатор.
+        encoded = name.encode('utf-8')
+        if len(encoded) > 99:
+            # Игнорируем битые байты при обрезке многобайтового символа на границе лимита
+            encoded = encoded[:99].decode('utf-8', 'ignore').encode('utf-8')
+            
+        return encoded.decode('utf-8')
+        
     def _process_node(self, elem: ET.Element) -> None:
         """
         Parsing point objects (POI).
@@ -283,7 +357,7 @@ class OSMParser:
         
         # Search for tag matches with the routing table (LUT)
         for val in tags.values():
-             # Hard cutoff: if POI class is disabled, abort parsing immediately
+            # Hard cutoff: if POI class is disabled, abort parsing immediately
             if val in LookupTables.DISABLED_POIS:
                 return
             
@@ -296,7 +370,8 @@ class OSMParser:
             return
 
         # Node attribute extraction
-        name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
+        name = OSMParser.sanitize_osm_name(tags.get('int_name', '').strip() or tags.get('name', '').strip())
+        
         # Fallback for unnamed POIs: assign fclass to prevent blank polygons on the map
         if not name and fclass:
             name = str(fclass)
@@ -335,7 +410,7 @@ class OSMParser:
         if not points: return
         self.ways_cache[elem.attrib['id']] = points
         
-        name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
+        name = OSMParser.sanitize_osm_name(tags.get('int_name', '').strip() or tags.get('name', '').strip())
         osm_id = elem.attrib['id']
 
         if 'highway' in tags and len(points) >= 2:
@@ -384,7 +459,7 @@ class OSMParser:
         if not fclass or fclass in LookupTables.DISABLED_LANDUSE: 
             return
             
-        name = tags.get('int_name', '').strip() or tags.get('name', '').strip()
+        name = OSMParser.sanitize_osm_name(tags.get('int_name', '').strip() or tags.get('name', '').strip())
         combined_points, parts = [], []
         current_index = 0
         
