@@ -32,7 +32,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 7201; wood ; Green ;200; landuse ; natural=wood;Wood;7201; Green ;200;1
 7202; park ; Green ;200; landuse ; leisure=park;A park.;7202; Green ;200;1
 7202; common ; Green ;200; landuse ; leisure=common;A park.;7202; Green ;200;1
-7203; residential ; Light-green ;200; landuse ; landuse=residential ;A residential;7203; Light-green ;200;1
+7203; residential ; Light-green ;200; landuse ; landuse=residential ;A residential;7203; Light-green ;200;0
 7204; industrial ; Light-green ;200; landuse ; landuse=industrial ;An industrial;7204; Light-green ;200;1
 7206; cemetery ; Light-green ;200; landuse ; landuse=cemetery ;A cemetery or;7206; Light-green ;200;1
 7207; allotments ; Light-green ;200; landuse ; landuse=allotments ;An area with s;7207; Light-green ;200;1
