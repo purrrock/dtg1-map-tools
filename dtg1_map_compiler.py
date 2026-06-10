@@ -300,10 +300,11 @@ class OSMParser:
 
     @staticmethod
     def sanitize_osm_name(name: str) -> str:
-        # Нормализует строку названия объекта...
-        # Нормализует строку названия объекта, переносит дескрипторы в конец 
-        #и экранирует пробелы для обхода бага рендеринга ATS3085S.
-
+        """
+        Нормализует строку названия объекта, переносит дескрипторы в конец 
+        и экранирует пробелы для обхода бага рендеринга ATS3085S.
+        Также применяет визуальное усечение (макс. 24 символа).
+        """
         if not name:
             return ""
             
@@ -332,15 +333,18 @@ class OSMParser:
         # Гарантирует, что графический движок часов считает строку монолитной
         name = name.replace(" ", "_")
         
-        # Защита от переполнения буфера dBase III (смещение 0x2A, лимит 100 байт)
-        # Поскольку UTF-8 символы (кириллица) занимают 2 байта, проверяем длину 
-        # байтового массива, а не строковых символов. Резервируем 1 байт под null-терминатор.
-        encoded = name.encode('utf-8')
-        if len(encoded) > 99:
-            # Игнорируем битые байты при обрезке многобайтового символа на границе лимита
-            encoded = encoded[:99].decode('utf-8', 'ignore').encode('utf-8')
+        # Визуальное усечение под размер экрана (макс ~25 символов)
+        # Используем 22 символа + 2 точки
+        if len(name) > 22:
+            # Используем две точки "..", чтобы сэкономить пиксели, 
+            # так как символ "_" также займет место.
+            name = name[:22].strip('_') + ".."
             
-        return encoded.decode('utf-8')
+        # Защитная конвертация: чистим возможные битые UTF-8 глифы,
+        # которые могут сломать парсер часов.
+        encoded = name.encode('utf-8', 'ignore')
+        
+        return encoded.decode('utf-8')   
         
     def _process_node(self, elem: ET.Element) -> None:
         """
@@ -370,7 +374,7 @@ class OSMParser:
             return
 
         # Node attribute extraction
-        name = OSMParser.sanitize_osm_name(tags.get('int_name', '').strip() or tags.get('name', '').strip())
+        name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         
         # Fallback for unnamed POIs: assign fclass to prevent blank polygons on the map
         if not name and fclass:
@@ -410,7 +414,7 @@ class OSMParser:
         if not points: return
         self.ways_cache[elem.attrib['id']] = points
         
-        name = OSMParser.sanitize_osm_name(tags.get('int_name', '').strip() or tags.get('name', '').strip())
+        name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         osm_id = elem.attrib['id']
 
         if 'highway' in tags and len(points) >= 2:
@@ -459,7 +463,7 @@ class OSMParser:
         if not fclass or fclass in LookupTables.DISABLED_LANDUSE: 
             return
             
-        name = OSMParser.sanitize_osm_name(tags.get('int_name', '').strip() or tags.get('name', '').strip())
+        name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         combined_points, parts = [], []
         current_index = 0
         

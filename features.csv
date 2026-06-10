@@ -258,4 +258,5 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 5671;aerialway_station;Black;100;pois;aerialway=station;A station where;5671;Black;500;0
 2962;shower;Black;100;pois;amenity=shower;shower;2962;Black;500;1
 4113;saddle;Black;100;pois;natural=saddle;Mountain saddle;4113;Black;500;1
+4115;hot_spring;Black;101;pois;natural=hot_spring;hot_spring;4115;Black;500;1
 2422;rest_area;Black;100;pois;highway=rest_area;Road restarea;2422;Black;500;1
