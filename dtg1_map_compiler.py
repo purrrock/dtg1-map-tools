@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Any
 import argparse
+import math
 
 # ==============================================================================
 # CONFIGURATION AND SYSTEM CONSTANTS
@@ -74,6 +75,7 @@ class LookupTables:
     POLYGON_CODES: Dict[str, int] = {}
     POI_CODES: Dict[str, int] = {}
     DISPLAY_SCALES: Dict[int, int] = {}
+    POI_SHAPES: Dict[str, str] = {}
     
     # Isolated blacklists to prevent fclass namespace collisions (e.g. 'residential')
     DISABLED_ROADS: set = set()
@@ -130,6 +132,10 @@ class LookupTables:
                     elif layer == 'pois':
                         cls.POI_CODES[fclass] = remap_code
                         cls.DISPLAY_SCALES[remap_code] = remap_lod
+                        
+                        # Чтение геометрии. Фоллбэк на 'rhombus', если столбец пуст или отсутствует
+                        shape_val = row[11].strip().lower() if len(row) > 11 else 'rhombus'
+                        cls.POI_SHAPES[fclass] = shape_val if shape_val else 'rhombus'
                         
                     loaded_records += 1
                     
@@ -536,9 +542,49 @@ class OSMParser:
             feature.calculate_bbox()
             self.landuse.append(feature)
 
-# ==============================================================================
-# BINARY COMPILATION MODULE
-# ==============================================================================
+class POIGeometryFactory:
+    """Генератор низкополигональных примитивов для слоя POI."""
+    EARTH_RADIUS = 6378137.0
+    R = 6.0
+    # Компенсация искажения перспективы дисплея ATS3085S
+    PERSPECTIVE_Y_MULTIPLIER = 1.5
+
+    @classmethod
+    def generate_polygon(cls, shape_type: str, center_lon: float, center_lat: float) -> List[Tuple[float, float]]:
+        R = cls.R
+        
+        # Маршрутизатор локальных координат вершин (x, y) в метрах.
+        # Обход строго по часовой стрелке (CW) для корректного рендеринга на часах.
+        shapes = {
+            "rhombus": [(0, R * 1.4), (R, 0), (0, -R * 1.4), (-R, 0), (0, R * 1.4)],
+            "triangle": [(0, R), (R, -R), (-R, -R), (0, R)],
+            "house": [(0, R + 2), (R, R - 3), (R, -R), (-R, -R), (-R, R - 3), (0, R + 2)],
+            "cup": [(-R, R), (R, R), (R, -R + 2.5), (R - 2.5, -R), (-R + 2.5, -R), (-R, -R + 2.5), (-R, R)],
+            "cross": [(-2, R), (2, R), (2, 2), (R, 2), (R, -2), (2, -2), (2, -R), (-2, -R), (-2, -2), (-R, -2), (-R, 2), (-2, 2), (-2, R)],
+            "toilet": [(-R, R), (R, R), (0.5, 0), (R, -R), (-R, -R), (-0.5, 0), (-R, R)],
+            "transport": [(-R, R - 1), (R - 3, R - 1), (R, R - 3.0), (R, -R), (R - 2.0, -R), (R - 2.0, -R + 1.5), (R - 4.0, -R + 1.5), (R - 4.0, -R), (-R + 4.0, -R), (-R + 4.0, -R + 1.5), (-R + 2.0, -R + 1.5), (-R + 2.0, -R), (-R, -R), (-R, R - 1)],
+            "shop": [(-R, R), (R, R), (R - 2.5, -R), (-R, -R), (-R, R)],
+            "attraction": [(-R, R), (-2.5, R - 2.0), (0.0, R), (2.5, R - 2.0), (R, R), (R, -R), (-R, -R), (-R, R)]
+        }
+        
+        # Безопасное извлечение с фоллбэком на ромб
+        rel_coords = shapes.get(shape_type, shapes["rhombus"])
+        
+        points = []
+        lat_rad = math.radians(center_lat)
+        cos_lat = math.cos(lat_rad)
+        
+        for x_offset, y_offset in rel_coords:
+            # Аппаратное растяжение по оси Y
+            y_offset_stretched = y_offset * cls.PERSPECTIVE_Y_MULTIPLIER
+            
+            # Конвертация метрического смещения в сферическую дельту (WGS 84)
+            d_lat = (y_offset_stretched / cls.EARTH_RADIUS) * (180.0 / math.pi)
+            d_lon = (x_offset / (cls.EARTH_RADIUS * cos_lat)) * (180.0 / math.pi)
+            
+            points.append((center_lon + d_lon, center_lat + d_lat))
+            
+        return points
 
 class MapCompiler:
 
@@ -834,11 +880,7 @@ def main():
 
     # --- POI BAKING BLOCK ---
     if args.poi_mode == "landuse" and pois_data:
-        print("[>] Baking POI objects into landuse layer as 5x15m stretched diamonds...")
-        import math
-        earth_radius = 6378137.0
-        radius_x = 5.0 / 2.0   # Width: 5 meters
-        radius_y = 15.0 / 2.0  # Height: 15 meters
+        print("[>] Baking POI objects into landuse layer using dynamic shape factory...")
         
         for poi in pois_data:
             if not poi.points: 
@@ -846,20 +888,16 @@ def main():
                 
             lon, lat = poi.points[0]
             
-            # Spherical delta calculation
-            d_lat = (radius_y / earth_radius) * (180.0 / math.pi)
-            d_lon = (radius_x / (earth_radius * math.cos(math.radians(lat)))) * (180.0 / math.pi)
+            # 1. Извлечение типа фигуры из глобального LUT
+            shape_type = LookupTables.POI_SHAPES.get(poi.fclass, "rhombus")
             
-            # CW Winding: North -> East -> South -> West -> Close(North)
-            poi.points = [
-                (lon, lat + d_lat),
-                (lon + d_lon, lat),
-                (lon, lat - d_lat),
-                (lon - d_lon, lat),
-                (lon, lat + d_lat)
-            ]
-            poi.code = 7209 # Hardcoded Pink style for commercial landuse
+            # 2. Вызов генератора геометрии
+            poi.points = POIGeometryFactory.generate_polygon(shape_type, lon, lat)
+            
+            # 3. Перерасчет Bounding Box для нового полигона
             poi.calculate_bbox()
+            
+            # POI сохраняет свой оригинальный код из LUT для разноцветного рендеринга
             landuse_data.append(poi)
             
         print(f"    Successfully baked {len(pois_data)} POIs.")
