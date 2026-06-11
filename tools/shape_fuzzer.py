@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import math
+import datetime
+
+# ==========================================
+# КОНСТАНТЫ ГЕОМЕТРИИ И КООРДИНАТ
+# ==========================================
+# Базовые координаты (центр стартового полигона)
+LAT_CENTER = 53.7130
+LON_CENTER = 28.4194
+
+EARTH_RADIUS = 6378137.0
+
+# Базовый радиус/смещение для геометрии фигур
+R = 6.0
+
+# Скорректированный множитель оси Y для компенсации перспективы
+PERSPECTIVE_Y_MULTIPLIER = 1.5
+
+# Расстояние между центрами фигур в матрице
+SPACING_METERS = 20.0
+
+OUTPUT_FILENAME = "shapes_test_grid_v2.osm"
+
+# ==========================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ==========================================
+
+def meters_to_lat_delta(meters):
+    return (meters / EARTH_RADIUS) * (180.0 / math.pi)
+
+def meters_to_lon_delta(meters, latitude):
+    lat_rad = math.radians(latitude)
+    return (meters / (EARTH_RADIUS * math.cos(lat_rad))) * (180.0 / math.pi)
+
+# ==========================================
+# ОПРЕДЕЛЕНИЕ ГЕОМЕТРИИ ФИГУР (МЕТРЫ)
+# Обход: Строго по часовой стрелке (CW)
+# ==========================================
+
+def get_shapes_definitions():
+    shapes = {}
+
+    # 1. Ромб (вытянут по вертикали)
+    shapes["Rhombus"] = [(0, R * 1.4), (R, 0), (0, -R * 1.4), (-R, 0), (0, R * 1.4)]
+
+    # 2. Треугольник
+    shapes["Triangle"] = [(0, R), (R, -R), (-R, -R), (0, R)]
+
+    # 3. Домик
+    shapes["House"] = [(0, R + 2), (R, R - 3), (R, -R), (-R, -R), (-R, R - 3), (0, R + 2)]
+
+    # 4. Чашка (Прямоугольник со скошенными нижними углами)
+    # Фаска (chamfer) начинается на высоте 2.5 метра от нижней грани.
+    shapes["Cup"] = [
+        (-R, R),          # Левый верхний угол
+        (R, R),           # Правый верхний угол
+        (R, -R + 2.5),    # Начало правого скоса (вертикальный спуск)
+        (R - 2.5, -R),    # Конец правого скоса (переход в основание)
+        (-R + 2.5, -R),   # Конец левого скоса (основание)
+        (-R, -R + 2.5),   # Начало левого скоса (подъем)
+        (-R, R)           # Замыкание контура
+    ]
+    
+    # 5. Крест ("Жирный", толщина перекладин 4м вместо 2м для читаемости на экране)
+    shapes["Cross"] = [
+        (-2, R), (2, R), (2, 2), (R, 2), (R, -2), (2, -2),
+        (2, -R), (-2, -R), (-2, -2), (-R, -2), (-R, 2), (-2, 2), (-2, R)
+    ]
+
+    # 6. Пиктограмма: Туалет (Стилизованные "песочные часы" / два встречных треугольника)
+    # Во избежание аппаратных багов заливки самопересекающихся полигонов,
+    # центральная точка (перешеек) расширена до 1 метра по оси X.
+    shapes["Toilet"] = [
+        (-R, R),           # Левый верхний угол
+        (R, R),            # Правый верхний угол
+        (0.5, 0),          # Правая сторона перешейка (центр)
+        (R, -R),           # Правый нижний угол
+        (-R, -R),          # Левый нижний угол
+        (-0.5, 0),         # Левая сторона перешейка (центр)
+        (-R, R)            # Замыкание контура
+    ]
+
+    # 7. Пиктограмма: Транспорт (Профиль автобуса)
+    # Увеличен угол скоса лобового стекла. Колесные арки смещены к центру.
+    shapes["Transport"] = [
+        (-R, R - 1), (R - 3, R - 1),           # Крыша автобуса (укорочена)
+        (R, R - 3.0), (R, -R),                   # Лобовое стекло (скос) и передний бампер
+        (R - 2.0, -R), (R - 2.0, -R + 1.5),      # Передняя колесная арка (правая грань)
+        (R - 4.0, -R + 1.5), (R - 4.0, -R),      # Передняя колесная арка (левая грань)
+        (-R + 4.0, -R), (-R + 4.0, -R + 1.5),    # Задняя колесная арка (правая грань)
+        (-R + 2.0, -R + 1.5), (-R + 2.0, -R),    # Задняя колесная арка (левая грань)
+        (-R, -R), (-R, R - 1)                    # Задний бампер и замыкание
+    ]
+
+    # 8. Пиктограмма: Магазин (Стилизованная тележка / прямоугольная трапеция)
+    # Левая грань строго вертикальна, правая образует скос.
+    shapes["Shop"] = [
+        (-R, R),          # Левый верхний угол (задняя стенка тележки)
+        (R, R),           # Правый верхний угол (передний край корзины)
+        (R - 2.5, -R),    # Правый нижний угол (конец скошенной передней стенки)
+        (-R, -R),         # Левый нижний угол (база задней стенки, прямой угол)
+        (-R, R)           # Замыкание контура
+    ]
+    
+    # 9. Пиктограмма: Достопримечательность (Башня с тремя острыми зубцами)
+    # Зубцы имеют треугольную форму. Количество вершин сокращено для оптимизации.
+    shapes["Attraction"] = [
+        (-R, R),             # Левый пик (острый зубец)
+        (-2.5, R - 2.0),     # Левая V-образная впадина
+        (0.0, R),            # Центральный пик
+        (2.5, R - 2.0),      # Правая V-образная впадина
+        (R, R),              # Правый пик
+        (R, -R),             # Правый нижний угол основания
+        (-R, -R),            # Левый нижний угол основания
+        (-R, R)              # Замыкание контура
+    ]
+
+    return shapes
+
+# ==========================================
+# ГЕНЕРАЦИЯ OSM XML (Матрица 3x3)
+# ==========================================
+
+def generate_shapes_osm():
+    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    shapes_defs = get_shapes_definitions()
+    
+    # 9 фигур для заполнения сетки
+    shape_names = [
+        "Rhombus", "Triangle", "House", 
+        "Cup", "Cross", "Toilet", 
+        "Transport", "Shop", "Attraction"
+    ]
+    
+    node_id = 1
+    way_id = 1
+    
+    xml_header = f"""<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="CustomShapesFuzzer_v2" timestamp="{timestamp}">
+  <bounds minlat="{LAT_CENTER - 0.1}" minlon="{LON_CENTER - 0.1}" maxlat="{LAT_CENTER + 0.1}" maxlon="{LON_CENTER + 0.1}"/>
+"""
+    nodes_xml = ""
+    ways_xml = ""
+    
+    for i, name in enumerate(shape_names):
+        if name not in shapes_defs:
+            continue
+            
+        # Матричное проецирование
+        row = i // 3  
+        col = i % 3   
+        
+        north_offset_meters = -row * SPACING_METERS 
+        east_offset_meters = col * SPACING_METERS
+        
+        center_lat = LAT_CENTER + meters_to_lat_delta(north_offset_meters)
+        center_lon = LON_CENTER + meters_to_lon_delta(east_offset_meters, LAT_CENTER)
+        
+        rel_coords = shapes_defs[name]
+        way_nodes = []
+        
+        for x_offset, y_offset in rel_coords:
+            # Аппаратная компенсация перспективы (уменьшена до 1.5)
+            y_offset_stretched = y_offset * PERSPECTIVE_Y_MULTIPLIER
+            
+            lat_d = meters_to_lat_delta(y_offset_stretched)
+            lon_d = meters_to_lon_delta(x_offset, center_lat)
+            
+            node_lat = center_lat + lat_d
+            node_lon = center_lon + lon_d
+            
+            nodes_xml += f'  <node id="{node_id}" lat="{node_lat:.7f}" lon="{node_lon:.7f}" timestamp="{timestamp}" version="1"/>\n'
+            way_nodes.append(node_id)
+            node_id += 1
+            
+        ways_xml += f'  <way id="{way_id}" timestamp="{timestamp}" version="1">\n'
+        for ref in way_nodes:
+            ways_xml += f'    <nd ref="{ref}"/>\n'
+        
+        ways_xml += f'    <tag k="landuse" v="commercial"/>\n'
+        ways_xml += f'    <tag k="name" v="Test {name}"/>\n'
+        ways_xml += '  </way>\n'
+        
+        way_id += 1
+
+    xml_footer = "</osm>\n"
+    
+    with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
+        f.write(xml_header)
+        f.write(nodes_xml)
+        f.write(ways_xml)
+        f.write(xml_footer)
+
+if __name__ == "__main__":
+    generate_shapes_osm()
