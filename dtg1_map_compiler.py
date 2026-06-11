@@ -7,16 +7,6 @@ DT G1 Map Compiler (Platform ATS3085S)
 v3.0 (POI Layer Update)
 Compiler of OpenStreetMap (OSM) vector data into closed binary formats
 of DT NO.1 G1 smartwatches (.mlp, .idx, .db).
-
-Architectural features of the ATS3085S platform:
-  1. Flat List State Machine: SQT index is generated as a flat list, not a tree.
-  2. Non-Zero Winding Rule: Internal polygon contours are CCW, external are CW.
-  3. Z-Culling (LOD): Hardware object hiding by 3 levels of detail.
-  4. System Dummies: Hex dummies (Payload Size = 0) to bypass firmware EOF protection.
-  5. C-Union Node Architecture: Navigation nodes and data nodes (28 bytes).
-  6. POI Topology Anomaly: The points layer (pois) has no .mlp file. Coordinates 
-     are encapsulated in the Data Node BBox, the v1 pointer is zeroed, and the .db 
-     attributes database is mapped without an empty 0 record (1-based index).
 """
 
 import os
@@ -174,13 +164,17 @@ class MapFeature:
     mlp_size: int = 0  # Binary body size in .mlp
 
     def calculate_bbox(self) -> None:
-        """Calculates the Bounding Box of an object.
-        For the POI layer (1 point) minX=maxX and minY=maxY automatically."""
-        minx = min(p[0] for p in self.points)
-        miny = min(p[1] for p in self.points)
-        maxx = max(p[0] for p in self.points)
-        maxy = max(p[1] for p in self.points)
-        self.bbox = (minx, miny, maxx, maxy)
+        """
+        Вычисляет Bounding Box объекта.
+        Оптимизация: генераторы заменены на list comprehensions для прямого 
+        исполнения в C-бэкенде.
+        """
+        if not self.points:
+            return
+            
+        xs = [p[0] for p in self.points]
+        ys = [p[1] for p in self.points]
+        self.bbox = (min(xs), min(ys), max(xs), max(ys))
 
     def pack_data_node(self) -> bytes:
         """
@@ -268,29 +262,73 @@ class OSMParser:
 
     def _pass1_cache_nodes(self) -> None:
         print("[>] Pass 1: Caching nodes...")
-        for event, elem in ET.iterparse(self.osm_file, events=('start', 'end')):
-            if event == 'end' and elem.tag == 'node':
-                self.nodes[elem.attrib['id']] = (float(elem.attrib['lon']), float(elem.attrib['lat']))
-                elem.clear()
-        print(f"    Nodes loaded: {len(self.nodes)}")
+        context = ET.iterparse(self.osm_file, events=('start', 'end'))
+        context = iter(context)
+        
+        try:
+            _, root = next(context)
+        except StopIteration:
+            return
+
+        count = 0
+        for event, elem in context:
+            if event == 'end':
+                if elem.tag == 'node':
+                    # Конвертация строковых ID в int существенно снижает объем занимаемой ОЗУ
+                    node_id = int(elem.attrib['id'])
+                    self.nodes[node_id] = (float(elem.attrib['lon']), float(elem.attrib['lat']))
+                    
+                    count += 1
+                    if count % 100000 == 0:
+                        sys.stdout.write(f"\r    Nodes cached: {count:,}")
+                        sys.stdout.flush()
+                
+                # В Pass 1 нас интересуют только координаты точек.
+                # Однако way и relation также необходимо сбрасывать, 
+                # иначе они осядут в ОЗУ в виде «мертвой» структуры дерева.
+                if elem.tag in ('node', 'way', 'relation'):
+                    elem.clear()
+                    root.clear()
+                
+        print(f"\r    Nodes loaded: {len(self.nodes):,}       ")
 
     def _pass2_build_features(self) -> None:
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
-        context = ET.iterparse(self.osm_file, events=('end',))
+        context = ET.iterparse(self.osm_file, events=('start', 'end'))
+        context = iter(context)
         
+        try:
+            _, root = next(context)
+        except StopIteration:
+            return
+        
+        count = 0
         for event, elem in context:
-            if elem.tag == 'way':
-                self._process_way(elem)
-                elem.clear()
-            elif elem.tag == 'relation':
-                self._process_relation(elem)
-                elem.clear()
-            elif elem.tag == 'node':
-                self._process_node(elem)
-                elem.clear()
+            if event == 'end':
+                # Очистка памяти вызывается только для закрытых топологических 
+                # примитивов верхнего уровня, сохраняя их дочерние теги в процессе сборки.
+                if elem.tag == 'way':
+                    self._process_way(elem)
+                    count += 1
+                    elem.clear()
+                    root.clear()
+                elif elem.tag == 'relation':
+                    self._process_relation(elem)
+                    count += 1
+                    elem.clear()
+                    root.clear()
+                elif elem.tag == 'node':
+                    self._process_node(elem)
+                    count += 1
+                    elem.clear()
+                    root.clear()
+                
+                if count % 10000 == 0:
+                    sys.stdout.write(f"\r    Elements processed: {count:,}")
+                    sys.stdout.flush()
             
-        print(f"    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).")
-
+        print(f"\r    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).      ")
+ 
     def _extract_tags(self, elem: ET.Element) -> Dict[str, str]:
         return {
             child.attrib['k']: child.attrib['v'] 
@@ -349,8 +387,6 @@ class OSMParser:
     def _process_node(self, elem: ET.Element) -> None:
         """
         Parsing point objects (POI).
-        Provides programmatic clipping via Blacklist and node geometry preparation 
-        for writing to the 16-byte BBox Data Node of ATS3085S format.
         """
         tags = self._extract_tags(elem)
         if not tags: 
@@ -382,8 +418,8 @@ class OSMParser:
         
         osm_id = elem.attrib['id']
         
-        # Extract raw coordinates from cache (populated in _pass1_cache_nodes)
-        node_coord = self.nodes.get(osm_id)
+        # Поиск координат по int-ключу
+        node_coord = self.nodes.get(int(osm_id))
         if not node_coord:
             return
 
@@ -405,14 +441,15 @@ class OSMParser:
 
     def _process_way(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
+        # Приведение ref к int для поиска в оптимизированном словаре
         points = [
-            self.nodes[nd.attrib['ref']] 
+            self.nodes[int(nd.attrib['ref'])] 
             for nd in elem.findall('nd') 
-            if nd.attrib.get('ref') in self.nodes
+            if 'ref' in nd.attrib and int(nd.attrib['ref']) in self.nodes
         ]
         
         if not points: return
-        self.ways_cache[elem.attrib['id']] = points
+        self.ways_cache[int(elem.attrib['id'])] = points
         
         name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         osm_id = elem.attrib['id']
@@ -473,11 +510,14 @@ class OSMParser:
         
         for member in sorted_members:
             if member.attrib.get('type') == 'way' and 'ref' in member.attrib:
-                ref = member.attrib['ref']
+                ref = int(member.attrib['ref']) # Конвертация для поиска в ways_cache
                 role = member.attrib.get('role', 'outer')
                 
                 if ref in self.ways_cache:
-                    ring_points = list(self.ways_cache[ref])
+                    ring_points = list(self.ways_cache[ref])                    
+                    
+                    
+                    
                     if len(ring_points) >= 4 and ring_points[0] == ring_points[-1]:
                         is_cw = self._is_clockwise(ring_points)
                         if role == 'outer' and not is_cw: ring_points.reverse()
