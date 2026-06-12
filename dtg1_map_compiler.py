@@ -276,28 +276,40 @@ class OSMParser:
         except StopIteration:
             return
 
+        # --- МИКРООПТИМИЗАЦИИ ВЫПОЛНЕНИЯ ---
+        # Локализация объектов в пространстве имен функции (ускорение инструкций VM)
+        nodes_cache = self.nodes
+        root_clear = root.clear
+        
+        # O(1) хэш-поиск вместо O(N) перебора элементов
+        TARGET_TAGS = {'node', 'way', 'relation'}
+        
         count = 0
         for event, elem in context:
             if event == 'end':
-                if elem.tag == 'node':
-                    # Конвертация строковых ID в int существенно снижает объем занимаемой ОЗУ
-                    node_id = int(elem.attrib['id'])
-                    self.nodes[node_id] = (float(elem.attrib['lon']), float(elem.attrib['lat']))
+                # Однократное чтение атрибута за итерацию
+                tag = elem.tag
+                if tag == 'node':
+                    # Прямое извлечение ссылки на словарь исключает 
+                    # повторные вызовы дескриптора elem.attrib
+                    attr = elem.attrib
+                    nodes_cache[int(attr['id'])] = (float(attr['lon']), float(attr['lat']))
                     
                     count += 1
-                    if count % 100000 == 0:
+                    
+                    # --- АППАРАТНАЯ ОПТИМИЗАЦИЯ ---
+                    # Побитовое И (выполняется за 1 такт процессора) вместо 
+                    # дорогостоящего деления по модулю (count % 100000 == 0).
+                    if not (count & 0x1FFFF):
                         sys.stdout.write(f"\r    Nodes cached: {count:,}")
                         sys.stdout.flush()
                 
-                # В Pass 1 нас интересуют только координаты точек.
-                # Однако way и relation также необходимо сбрасывать, 
-                # иначе они осядут в ОЗУ в виде «мертвой» структуры дерева.
-                if elem.tag in ('node', 'way', 'relation'):
+                if tag in TARGET_TAGS:
                     elem.clear()
-                    root.clear()
+                    root_clear()
                 
-        print(f"\r    Nodes loaded: {len(self.nodes):,}       ")
-
+        print(f"\r    Nodes loaded: {len(nodes_cache):,}       ")
+        
     def _pass2_build_features(self) -> None:
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
         context = ET.iterparse(self.osm_file, events=('start', 'end'))
@@ -308,33 +320,42 @@ class OSMParser:
         except StopIteration:
             return
         
+        # --- МИКРООПТИМИЗАЦИИ ВЫПОЛНЕНИЯ ---
+        # Локализация алиасов для C-бэкенда (устранение опкодов LOAD_ATTR)
+        root_clear = root.clear
+        stdout_write = sys.stdout.write
+        stdout_flush = sys.stdout.flush
+        
+        # O(1) таблица переходов (Jump Table) для диспетчеризации методов парсера.
+        # Связывает строку тега напрямую с адресом локализованного метода-обработчика.
+        processors = {
+            'way': self._process_way,
+            'relation': self._process_relation,
+            'node': self._process_node
+        }
+        
         count = 0
         for event, elem in context:
             if event == 'end':
-                # Очистка памяти вызывается только для закрытых топологических 
-                # примитивов верхнего уровня, сохраняя их дочерние теги в процессе сборки.
-                if elem.tag == 'way':
-                    self._process_way(elem)
-                    count += 1
-                    elem.clear()
-                    root.clear()
-                elif elem.tag == 'relation':
-                    self._process_relation(elem)
-                    count += 1
-                    elem.clear()
-                    root.clear()
-                elif elem.tag == 'node':
-                    self._process_node(elem)
-                    count += 1
-                    elem.clear()
-                    root.clear()
+                # Выборка функции-обработчика по тегу
+                processor = processors.get(elem.tag)
                 
-                if count % 10000 == 0:
-                    sys.stdout.write(f"\r    Elements processed: {count:,}")
-                    sys.stdout.flush()
+                if processor:
+                    processor(elem)
+                    count += 1
+                    
+                    # Изолированная очистка памяти только для топологии верхнего уровня
+                    elem.clear()
+                    root_clear()
+                    
+                    # --- АППАРАТНАЯ ОПТИМИЗАЦИЯ ---
+                    # Побитовое И. Условие истинно каждые 16 384 обработанных элементов.
+                    if not (count & 0x3FFF):
+                        stdout_write(f"\r    Elements processed: {count:,}")
+                        stdout_flush()
             
         print(f"\r    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).      ")
- 
+        
     def _extract_tags(self, elem: ET.Element) -> Dict[str, str]:
         return {
             child.attrib['k']: child.attrib['v'] 
