@@ -85,6 +85,20 @@ To protect the watch's graphics pipeline from RAM overflow and `.idx` binary gra
 The algorithm utilizes an Early Exit parsing interrupt: upon encountering a tag with the `Enabled=0` value, the `OSMParser` immediately discards the XML node prior to calculating the Bounding Box. This saves CPU time and prevents replacing excluded objects with default gray or green styles.
 
 ---
+## 🚀 Key Features & Hardware Workarounds
+
+Our custom compiler `dtg1_map_compiler.py` overcomes several critical hardware limitations of the ATS3085S graphics pipeline:
+
+* **Software Z-Culling (Early Exit):** Implemented via the `Enabled` column in the `features.csv` Look-Up Table (LUT). Allows ignoring specific OpenStreetMap tags during XML parsing to save memory and prevent rendering clutter.
+* **Namespace Isolation:** Blacklists are strictly isolated by layers (`roads`, `landuse`, `water`, `pois`) to prevent namespace collisions.
+* **POI Injection (Landuse Baking):** The watch's hardware engine inherently lacks support for rendering Point of Interest (POI) text and Z-Culling natively. We bypassed this by "baking" point objects into the `landuse` layer. Points are converted into 5x15m elongated rhombuses (observing the strict CW Winding Rule) using a reserved fallback style `7209` (Pink).
+* **Text Truncation Bug Fix (Name Sanitization):** The firmware's GUI text-wrapping algorithm contains a bug that truncates strings after a space character (`0x20`). Our compiler pre-processes all object names:
+  * Spaces are hardware-escaped to underscores (`0x5F`).
+  * Topographic descriptors (e.g., "Street", "Square", "Lake") are dynamically inverted and moved to the end of the name to ensure unique identification (supports multi-language stop-words: EN, RU, BY, Latin).
+  * A fallback mechanism automatically assigns the `fclass` value if the object lacks a name, preventing `dBase III` dummy record corruption.
+* **GPX Route Injection:** Custom GPX tracks are injected into the map by replacing native `motorway` objects (style `5111`, reserved in ROM for rendering a bold, contrasting orange line) to prevent style collisions, while native motorways are forcibly downscaled to `trunk` (`5112`, yellow line) via code substitution in `features.csv`.
+
+---
 
 ## Custom Route Injection (GPX)
 

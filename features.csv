@@ -126,9 +126,14 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 2404;guesthouse;Black;100;pois;tourism=guest_house;Гостевой дом;7219;Salmon;500;1;house
 2405;hostel;Black;100;pois;tourism=hostel;Хостел;7219;Salmon;500;1;house
 2406;chalet;Black;100;pois;tourism=chalet;Шале;7219;Salmon;500;0;house
-2421;shelter;Black;100;pois;amenity=shelter;Укрытие;7219;Salmon;500;1;triangle
+2421;weather_shelter;Black;100;pois;shelter_type=lean_to;Укрытие;7219;Salmon;500;1;triangle
+2421;weather_shelter;Black;100;pois;shelter_type=picnic_shelter;Укрытие;7219;Salmon;500;1;triangle
+2421;weather_shelter;Black;100;pois;shelter_type=basic_hut;Укрытие;7219;Salmon;500;1;triangle
+2421;weather_shelter;Black;100;pois;shelter_type=weather_shelter;Укрытие;7219;Salmon;500;1;triangle
+2421;shelter;Black;100;pois;amenity=shelter;Укрытие;7219;Salmon;500;0;triangle
 2422;camp_site;Black;100;pois;tourism=camp_site;Кемпинг;7219;Salmon;500;1;triangle
 2423;alpine_hut;Black;100;pois;tourism=alpine_hut;Альпийский домик;7219;Salmon;500;1;house
+2423;alpine_hut;Black;100;pois;tourism=wilderness_hut;Лесная избушка;7219;Salmon;500;1;house
 2424;caravan_site;Black;100;pois;tourism=caravan_site;Стоянка автодомов;7219;Salmon;500;1;triangle
 2501;supermarket;Black;100;pois;shop=supermarket;Супермаркет;7219;Salmon;500;1;shop
 2502;bakery;Black;100;pois;shop=bakery;Пекарня;7219;Salmon;500;1;shop
@@ -158,7 +163,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 2529;beauty_shop;Black;100;pois;shop=beauty;Салон красоты;7219;Salmon;500;0;shop
 2530;video_shop;Black;100;pois;shop=video;Видеомагазин;7219;Salmon;500;0;shop
 2541;car_dealership;Black;100;pois;shop=car;Автосалон;7219;Salmon;500;0;shop
-2542;bicycle_shop;Black;100;pois;shop=bicycle;Веломагазин;7209;Pink;500;1;shop
+2542;bicycle_shop;Black;100;pois;shop=bicycle;Веломагазин;7209;Pink;500;1;bicycle
 2543;doityourself;Black;100;pois;shop=doityourself;Строительный магазин;7219;Salmon;500;1;shop
 2543;hardware;Black;100;pois;shop=hardware;Хозмаг;7219;Salmon;500;1;shop
 2544;furniture_shop;Black;100;pois;shop=furniture;Мебельный магазин;7219;Salmon;500;0;shop
@@ -180,7 +185,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 2721;attraction;Black;100;pois;tourism=attraction;Достопримечательность;7219;Salmon;500;1;attraction
 2722;museum;Black;100;pois;tourism=museum;Музей;7219;Salmon;500;0;attraction
 2723;monument;Black;100;pois;historic=monument;Памятник;7219;Salmon;500;1;attraction
-2724;memorial;Black;100;pois;historic=memorial;Мемориал;7219;Salmon;500;1;attraction
+2724;memorial;Black;100;pois;historic=memorial;Мемориал;7219;Salmon;500;1;bicycle
 2725;art;Black;100;pois;tourism=artwork;Искусство;7219;Salmon;500;1;attraction
 2731;castle;Black;100;pois;historic=castle;Замок;7219;Salmon;500;1;attraction
 2732;ruins;Black;100;pois;historic=ruins;Руины;7219;Salmon;500;1;attraction
@@ -235,7 +240,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 5251;service;Black;100;pois;highway=services;Служебный проезд;7219;Salmon;500;0;rhombus
 5260;parking;Black;100;pois;amenity=parking;Парковка;7219;Salmon;500;0;rhombus
 5270;parking_bicycle;Black;100;pois;amenity=bicycle_parking;Велопарковка;7219;Salmon;500;0;rhombus
-5271;bicycle_repair_station;Black;100;pois;amenity=bicycle_repair_station;Ремонт велосипедов;7209;Pink;500;1;rhombus
+5271;bicycle_repair_station;Black;100;pois;amenity=bicycle_repair_station;Ремонт велосипедов;7209;Pink;500;1;bicycle
 5301;slipway;Black;100;pois;leisure=slipway;Слип для лодок;7219;Salmon;500;0;rhombus
 5302;marina;Black;100;pois;leisure=marina;Пристань для яхт;7219;Salmon;500;0;rhombus
 5303;pier;Black;100;pois;man_made=pier;Пирс;7219;Salmon;500;0;rhombus
@@ -256,7 +261,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 5656;apron;Black;100;pois;aeroway=apron;Перрон;7219;Salmon;500;0;transport
 5661;ferry_terminal;Black;100;pois;amenity=ferry_terminal;Паромный терминал;7219;Salmon;500;1;transport
 5671;aerialway_station;Black;100;pois;aerialway=station;Станция канатной дороги;7219;Salmon;500;0;transport
-2962;shower;Black;100;pois;amenity=shower;Душ;7219;Salmon;500;1;rhombus
+2962;shower;Black;100;pois;amenity=shower;Душ;7219;Salmon;500;1;shower
 4113;saddle;Black;100;pois;natural=saddle;Перевал;7219;Salmon;500;1;rhombus
 4115;hot_spring;Black;101;pois;natural=hot_spring;Горячий источник;8200;Blue;500;1;attraction
 2422;rest_area;Black;100;pois;highway=rest_area;Зона отдыха;7219;Salmon;500;1;triangle

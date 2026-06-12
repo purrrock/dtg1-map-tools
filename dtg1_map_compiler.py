@@ -225,16 +225,15 @@ class GPXParser:
             
         return track_name, points
 
-# ==============================================================================
-# GEOMETRY PARSING MODULE
-# ==============================================================================
-
 class OSMParser:
     """Two-pass streaming OSM parser with topology processing"""
+    # O(1) хэш-множество для аппаратного Early Exit парсинга закрытых территорий.
+    # Локализовано на уровне класса для однократной инициализации в памяти.
+    RESTRICTED_ACCESS_VALUES = {'private', 'permit', 'no'}
     
     def __init__(self, osm_file: str):
         self.osm_file = osm_file
-        self.nodes: Dict[str, Tuple[float, float]] = {}
+        self.nodes: Dict[str, Tuple[float, float]] = {}    
         self.ways_cache: Dict[str, List[Tuple[float, float]]] = {}
         
         self.roads: List[MapFeature] = []
@@ -401,10 +400,20 @@ class OSMParser:
         
     def _process_node(self, elem: ET.Element) -> None:
         """
-        Parsing point objects (POI).
+        Parsing point objects (POI) with dynamic hardware overrides for restricted barriers.
         """
         tags = self._extract_tags(elem)
         if not tags: 
+            return
+
+        is_restricted = tags.get('access') in self.RESTRICTED_ACCESS_VALUES
+        
+        # Флаг наличия физического препятствия (gate, lift_gate, block, bollard и т.д.)
+        is_barrier = 'barrier' in tags
+
+        # Условный Early Exit: жестко отбрасываем закрытые объекты (например, магазины для персонала),
+        # но пропускаем в конвейер закрытые барьеры.
+        if is_restricted and not is_barrier:
             return
 
         fclass = None
@@ -456,7 +465,11 @@ class OSMParser:
 
     def _process_way(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
-        # Приведение ref к int для поиска в оптимизированном словаре
+        
+        if tags.get('access') in self.RESTRICTED_ACCESS_VALUES:
+            if not ('landuse' in tags or 'leisure' in tags or 'natural' in tags):
+                return
+                
         points = [
             self.nodes[int(nd.attrib['ref'])] 
             for nd in elem.findall('nd') 
@@ -573,7 +586,23 @@ class POIGeometryFactory:
             "toilet": [(-R, R), (R, R), (0.5, 0), (R, -R), (-R, -R), (-0.5, 0), (-R, R)],
             "transport": [(-R, R - 1), (R - 3, R - 1), (R, R - 3.0), (R, -R), (R - 2.0, -R), (R - 2.0, -R + 1.5), (R - 4.0, -R + 1.5), (R - 4.0, -R), (-R + 4.0, -R), (-R + 4.0, -R + 1.5), (-R + 2.0, -R + 1.5), (-R + 2.0, -R), (-R, -R), (-R, R - 1)],
             "shop": [(-R, R), (R, R), (R - 2.5, -R), (-R, -R), (-R, R)],
-            "attraction": [(-R, R), (-2.5, R - 2.0), (0.0, R), (2.5, R - 2.0), (R, R), (R, -R), (-R, -R), (-R, R)]
+            "attraction": [(-R, R), (-2.5, R - 2.0), (0.0, R), (2.5, R - 2.0), (R, R), (R, -R), (-R, -R), (-R, R)],
+            "bicycle": [
+                (-7.5, 1.5), (-5.25, 4.0), (-1.5, 4.0), (0.0, 1.5),
+                (1.5, 4.0), (5.25, 4.0), (7.5, 1.5), (7.5, -1.5),
+                (5.25, -4.0), (1.5, -4.0), (0.0, -1.5), (-1.5, -4.0),
+                (-5.25, -4.0), (-7.5, -1.5), (-7.5, 1.5)
+            ],
+            "shower": [
+                (0.0, R), (5, 1.5), (-0.75, 1.5), (-0.75, -R), 
+                (-5, -R), (-5, 1.5), (0.0, R)
+            ],
+            "barrier": [
+                (0.0, 3.5), (R - 3.5, R), (R, R - 3.5), (3.5, 0.0), 
+                (R, -R + 3.5), (R - 3.5, -R), (0.0, -3.5), (-R + 3.5, -R), 
+                (-R, -R + 3.5), (-3.5, 0.0), (-R, R - 3.5), (-R + 3.5, R), 
+                (0.0, 3.5)
+            ]
         }
         
         # Безопасное извлечение с фоллбэком на ромб
@@ -594,7 +623,7 @@ class POIGeometryFactory:
             points.append((center_lon + d_lon, center_lat + d_lat))
             
         return points
-
+        
 class MapCompiler:
 
     @staticmethod
