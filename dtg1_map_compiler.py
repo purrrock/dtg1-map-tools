@@ -393,7 +393,6 @@ class OSMParser:
             name = name[:22].strip('_') + ".."
             
         # Защитная конвертация: чистим возможные битые UTF-8 глифы,
-        # которые могут сломать парсер часов.
         encoded = name.encode('utf-8', 'ignore')
         
         return encoded.decode('utf-8')   
@@ -411,32 +410,42 @@ class OSMParser:
         # Флаг наличия физического препятствия (gate, lift_gate, block, bollard и т.д.)
         is_barrier = 'barrier' in tags
 
-        # Условный Early Exit: жестко отбрасываем закрытые объекты (например, магазины для персонала),
-        # но пропускаем в конвейер закрытые барьеры.
+        # Условный Early Exit: жестко отбрасываем закрытые объекты, 
+        # не являющиеся физическими препятствиями.
         if is_restricted and not is_barrier:
             return
-
+         
         fclass = None
         code = None
         
-        # Search for tag matches with the routing table (LUT)
-        for val in tags.values():
-            # Hard cutoff: if POI class is disabled, abort parsing immediately
-            if val in LookupTables.DISABLED_POIS:
-                return
+        # Переопределение для закрытых препятствий.
+        # Выполняется до обработки общих правил LUT для перехвата объекта.
+        if is_restricted and is_barrier:
+            fclass = "barrier"
+            code = 7209 # Розовый цвет согласно конфигурации
             
-            if val in LookupTables.POI_CODES:
-                fclass = val
-                code = LookupTables.POI_CODES[val]
-                break
+            # Динамическая инъекция в LUT для корректной диспетчеризации в POIGeometryFactory
+            # Гарантирует, что генератор геометрии построит диагональный крест, а не фоллбэк "rhombus"
+            LookupTables.POI_SHAPES[fclass] = "barrier"
+        else:
+            # Стандартный поиск по таблице маршрутизации LUT для разрешенных объектов
+            for val in tags.values():
+                # Hard cutoff: if POI class is disabled, abort parsing immediately
+                if val in LookupTables.DISABLED_POIS:
+                    return
+                
+                if val in LookupTables.POI_CODES:
+                    fclass = val
+                    code = LookupTables.POI_CODES[val]
+                    break
                 
         if code is None:
             return
-
+            
         # Node attribute extraction
         name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         
-        # Fallback for unnamed POIs: assign fclass to prevent blank polygons on the map
+        # Fallback for unnamed POIs: assign fclass to prevent unnamed polygons on the map
         if not name and fclass:
             name = str(fclass)
         
