@@ -43,28 +43,20 @@ class HWConfig:
 # Вынесен из тела функции для предотвращения миллионных циклов аллокации памяти.
 # Строго отсортирован по убыванию длины для корректной работы алгоритма startswith.
 _STOP_WORDS = (
-    # Длина 10
     "restaurant",
-    # Длина 9
-    "praspiekt", "boulevard",
-    # Длина 8
-    "проспект", "переулок", "ресторан", "праспект", "рэстаран", 
+     "praspiekt", "boulevard",
+     "проспект", "переулок", "ресторан", "праспект", "рэстаран", 
     "praspekt", "stancyya", "prypynak", "restaran",
-    # Длина 7
     "площадь", "бульвар", "станция", "магазин", "завулак", 
     "станцыя", "highway", "grocery", "station", "zavulak", "voziera",
-    # Длина 6
     "вуліца", "плошча", "возера", "vulica", "plošča", "bulvar", 
     "alieja", "skvier", "улица", "street", "avenue", "square", 
     "shoppe", "market",
-    # Длина 5
     "пр-кт", "шоссе", "аллея", "озеро", "сквер", "крама", 
     "blvd.", "drive", "alley", "hotel", "river", "pr-kt", "krama",
-    # Длина 4
     "кафе", "парк", "шаша", "алея", "вул.", "зав.", 
     "кафэ", "šaša", "vul.", "zav.", "kafe", 
     "road", "lane", "cafe", "shop", "mall", "lake", "ave.",
-    # Длина 3
     "ул.", "пер.", "пл.", "st.", "rd.", "ln.", "dr.", "sq.", 
     "way", "pl."
 )
@@ -84,9 +76,7 @@ class LookupTables:
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
-        # Parsing external style file. Column format: 
-        # [0]Code [1]fclass ... [7]Remap_Code [8]Remap_Color [9]Remap_LOD [10]Enabled
-
+        # Parsing external style file.
         if not os.path.exists(filepath):
             print(f"[-] Error: Configuration file {filepath} not found.")
             sys.exit(1)
@@ -172,8 +162,7 @@ class MapFeature:
     def calculate_bbox(self) -> None:
         """
         Вычисляет Bounding Box объекта.
-        Оптимизация: генераторы заменены на list comprehensions для прямого 
-        исполнения в C-бэкенде.
+        Оптимизация: генераторы заменены на list comprehensions для прямого исполнения в C-бэкенде.
         """
         if not self.points:
             return
@@ -298,7 +287,7 @@ class OSMParser:
                     count += 1
                     
                     # --- АППАРАТНАЯ ОПТИМИЗАЦИЯ ---
-                    # Побитовое И (выполняется за 1 такт процессора) вместо 
+                    # Побитовое И место 
                     # дорогостоящего деления по модулю (count % 100000 == 0).
                     if not (count & 0x1FFFF):
                         sys.stdout.write(f"\r    Nodes cached: {count:,}")
@@ -349,7 +338,7 @@ class OSMParser:
                     root_clear()
                     
                     # --- АППАРАТНАЯ ОПТИМИЗАЦИЯ ---
-                    # Побитовое И. Условие истинно каждые 16 384 обработанных элементов.
+                    # Побитовое И. Условие истинно каждые 16384 обработанных элементов.
                     if not (count & 0x3FFF):
                         stdout_write(f"\r    Elements processed: {count:,}")
                         stdout_flush()
@@ -367,8 +356,7 @@ class OSMParser:
     def sanitize_osm_name(name: str) -> str:
         """
         Нормализует строку названия объекта, переносит дескрипторы в конец 
-        и экранирует пробелы для обхода бага рендеринга ATS3085S.
-        Также применяет визуальное усечение (макс. 24 символа).
+        и экранирует пробелы. Также применяет визуальное усечение (макс. 24 символа).
         """
         if not name:
             return ""
@@ -395,7 +383,7 @@ class OSMParser:
                 break # После первой успешной инверсии прерываем цикл
                 
         # Аппаратное экранирование (0x20 -> 0x5F)
-        # Гарантирует, что графический движок часов считает строку монолитной
+        # Гарантирует, что движок часов считает строку монолитной
         name = name.replace(" ", "_")
         
         # Визуальное усечение под размер экрана (макс ~25 символов)
@@ -566,7 +554,7 @@ class OSMParser:
 class POIGeometryFactory:
     """Генератор низкополигональных примитивов для слоя POI."""
     EARTH_RADIUS = 6378137.0
-    R = 6.0
+    R = 4.1
     # Компенсация искажения перспективы дисплея ATS3085S
     PERSPECTIVE_Y_MULTIPLIER = 1.5
 
@@ -920,7 +908,7 @@ def main():
             
             # POI сохраняет свой оригинальный код из LUT для разноцветного рендеринга
             landuse_data.append(poi)
-            
+ 
         print(f"    Successfully baked {len(pois_data)} POIs.")
         pois_data.clear() # Clear array to prevent processing in native DB compiler
     # ------------------------
