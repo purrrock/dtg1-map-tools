@@ -11,6 +11,19 @@ The toolset allows building your own highly detailed maps from open sources (e.g
 
 ---
 
+## 🚀 Core Compiler Features
+
+The compiler has been significantly upgraded to bypass native firmware limitations and optimize resource consumption:
+
+* **Point of Interest (POI) Icon Baking:** Circumvents the hardware graphics pipeline limitation (which natively drops POI rendering) by parametrically "baking" point objects into the `landuse` layer. Generates low-poly geometric primitives (triangles, squares, hexagons...) with automatic display perspective distortion compensation (Y-multiplier = 1.5).
+* **Software Culling (Early Exit Parsing):** Highly optimized two-pass XML streaming (`xml.etree.ElementTree.iterparse`). Drops disabled routing nodes immediately during tree traversal via the 11th column (`Enabled`) in the LUT configuration.
+* **Dynamic Hardware Overrides:** Overrides standard routing table rules for specific entities. For instance, physical barriers with restricted access (`access=private/no/permit`) are automatically intercepted prior to LUT evaluation and forced into pink diagonal crosses (Hardware Code: `7209`).
+* **Namespace Collision Isolation:** Blacklist registries are strictly isolated by layer (`pois`, `roads`, `landuse`, `water`) to prevent `fclass` routing conflicts between differently categorized objects.
+* **GPX Track Integration:** Natively compiles custom `.gpx` user routes directly into the hardware vector graph.
+
+---
+
+
 ## Toolkit Composition
 
 Currently, the codebase provides 100% binary compatibility with the hardware parser of the watch and includes:
@@ -54,7 +67,7 @@ python dtg1_map_compiler.py [arguments]
 * `-p MODE`, `--poi-mode MODE` — Generation mode for the Points of Interest (POI) database.
     * `none` *(default)* — Completely ignore POIs during the build. Protects the database from bloating.
     * `native` — Generate original `pois.idx` and `pois.db` binaries. Useful for testing firmware reaction.
-    * `landuse` — Integrate POIs into the landuse layer (Pink diamonds).
+    * `landuse` — Integrate POIs into the landuse layer.
 
 ---
 
@@ -67,7 +80,7 @@ The `features.csv` file (Look-Up Table) is the main configuration file of the co
 The configuration consists of 11 columns separated by a semicolon (`;`).
 **Header format:**
 ```text
-Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LOD;Enabled
+Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LOD;Enabled;;Shape
 ```
 
 **Remapping (aliasing) parameters are of particular importance:**
@@ -83,20 +96,6 @@ To protect the watch's graphics pipeline from RAM overflow and `.idx` binary gra
 * **`0` (or `false`)** — Muted class. Hardware-culled. 
 
 The algorithm utilizes an Early Exit parsing interrupt: upon encountering a tag with the `Enabled=0` value, the `OSMParser` immediately discards the XML node prior to calculating the Bounding Box. This saves CPU time and prevents replacing excluded objects with default gray or green styles.
-
----
-## 🚀 Key Features & Hardware Workarounds
-
-Our custom compiler `dtg1_map_compiler.py` overcomes several critical hardware limitations of the ATS3085S graphics pipeline:
-
-* **Software Z-Culling (Early Exit):** Implemented via the `Enabled` column in the `features.csv` Look-Up Table (LUT). Allows ignoring specific OpenStreetMap tags during XML parsing to save memory and prevent rendering clutter.
-* **Namespace Isolation:** Blacklists are strictly isolated by layers (`roads`, `landuse`, `water`, `pois`) to prevent namespace collisions.
-* **POI Injection (Landuse Baking):** The watch's hardware engine inherently lacks support for rendering Point of Interest (POI) text and Z-Culling natively. We bypassed this by "baking" point objects into the `landuse` layer. Points are converted into 5x15m elongated rhombuses (observing the strict CW Winding Rule) using a reserved fallback style `7209` (Pink).
-* **Text Truncation Bug Fix (Name Sanitization):** The firmware's GUI text-wrapping algorithm contains a bug that truncates strings after a space character (`0x20`). Our compiler pre-processes all object names:
-  * Spaces are hardware-escaped to underscores (`0x5F`).
-  * Topographic descriptors (e.g., "Street", "Square", "Lake") are dynamically inverted and moved to the end of the name to ensure unique identification (supports multi-language stop-words: EN, RU, BY, Latin).
-  * A fallback mechanism automatically assigns the `fclass` value if the object lacks a name, preventing `dBase III` dummy record corruption.
-* **GPX Route Injection:** Custom GPX tracks are injected into the map by replacing native `motorway` objects (style `5111`, reserved in ROM for rendering a bold, contrasting orange line) to prevent style collisions, while native motorways are forcibly downscaled to `trunk` (`5112`, yellow line) via code substitution in `features.csv`.
 
 ---
 
@@ -130,7 +129,7 @@ And other tools.
 
 ## 🗺️ Roadmap & Future Plans (v1.1+)
 
-The core compilation engine is now stable (v1.0). Our next major goal is to transform this CLI tool into a user-friendly "Map-as-a-Service" platform for the smartwatch community.
+The core compilation engine is now stable. Our next major goal is to transform this CLI tool into a user-friendly "Map-as-a-Service" platform for the smartwatch community.
 
 **Planned Features:**
 * [ ] **Pre-compiled Map Archives:** Regularly updated, ready-to-download map packages for entire countries or popular tourist regions. These will be hosted directly in GitHub Releases—no Python installation required for end-users.
