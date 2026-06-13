@@ -73,6 +73,10 @@ class LookupTables:
     DISABLED_ROADS: set = set()
     DISABLED_LANDUSE: set = set()
     DISABLED_POIS: set = set()
+    
+    # Новые реестры маршрутизации по тегам
+    TAG_ROUTING = {'pois': {}, 'roads': {}, 'landuse': {}, 'water': {}}
+    DISABLED_TAGS = set()
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
@@ -95,6 +99,7 @@ class LookupTables:
                         
                     fclass = row[1].strip()
                     layer = row[4].strip()
+                    osm_tag = row[5].strip() # Извлечение колонки OSM_Tags                  
                     
                     # Read Enabled flag. Any of these values disables the class.
                     enabled_flag = row[10].strip().lower()
@@ -607,10 +612,10 @@ class POIGeometryFactory:
                 (-5, -R), (-5, 1.5), (0.0, R)
             ],
             "barrier": [
-                (0.0, 3.5), (R - 3.5, R), (R, R - 3.5), (3.5, 0.0), 
-                (R, -R + 3.5), (R - 3.5, -R), (0.0, -3.5), (-R + 3.5, -R), 
-                (-R, -R + 3.5), (-3.5, 0.0), (-R, R - 3.5), (-R + 3.5, R), 
-                (0.0, 3.5)
+                (0.0, 3), (R - 3, R), (R, R - 3), (3, 0.0), 
+                (R, -R + 3), (R - 3, -R), (0.0, -3), (-R + 3, -R), 
+                (-R, -R + 3), (-3, 0.0), (-R, R - 3), (-R + 3, R), 
+                (0.0, 3)
             ]
         }
         
