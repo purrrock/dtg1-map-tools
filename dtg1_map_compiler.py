@@ -94,14 +94,14 @@ class LookupTables:
                 
                 loaded_records = 0
                 for row in reader:
-                    if len(row) < 11: # Expanded to 11 columns
+                    if len(row) < 11:
                         continue
                         
                     fclass = row[1].strip()
                     layer = row[4].strip()
-                    osm_tag = row[5].strip() # Извлечение колонки OSM_Tags                  
+                    osm_tag = row[5].strip()             
                     
-                    # Read Enabled flag. Any of these values disables the class.
+                    # Read Enabled flag.
                     enabled_flag = row[10].strip().lower()
                     if enabled_flag in ('0', 'false', 'no', 'off', ''):
                         if layer == 'roads':
@@ -110,7 +110,18 @@ class LookupTables:
                             cls.DISABLED_POIS.add(fclass)
                         else:  # landuse, water
                             cls.DISABLED_LANDUSE.add(fclass)
-                        continue  # Skip adding to active mapping dicts
+                        continue 
+                    
+                    # --- ИНТЕГРАЦИЯ ТЕГОВОЙ МАРШРУТИЗАЦИИ (Key-Value Routing) ---
+                    # Разбиваем строку OSM_Tags на пары (k, v) и заносим в изолированный словарь слоя.
+                    # Поддерживается формат "shop=bicycle" или "shop=bicycle, amenity=bicycle_rental"
+                    if osm_tag and "=" in osm_tag:
+                        for tag_pair in osm_tag.split(','):
+                            if "=" in tag_pair:
+                                k, v = tag_pair.split("=", 1)
+                                k, v = k.strip(), v.strip()
+                                if layer in cls.TAG_ROUTING:
+                                    cls.TAG_ROUTING[layer][(k, v)] = fclass
                     
                     try:
                         remap_code = int(row[7].strip())
@@ -128,7 +139,6 @@ class LookupTables:
                         cls.POI_CODES[fclass] = remap_code
                         cls.DISPLAY_SCALES[remap_code] = remap_lod
                         
-                        # Чтение геометрии. Фоллбэк на 'rhombus', если столбец пуст или отсутствует
                         shape_val = row[11].strip().lower() if len(row) > 11 else 'rhombus'
                         cls.POI_SHAPES[fclass] = shape_val if shape_val else 'rhombus'
                         
@@ -401,68 +411,59 @@ class OSMParser:
         encoded = name.encode('utf-8', 'ignore')
         
         return encoded.decode('utf-8')   
-        
+
     def _process_node(self, elem: ET.Element) -> None:
-        """
-        Parsing point objects (POI) with dynamic hardware overrides for restricted barriers.
-        """
         tags = self._extract_tags(elem)
         if not tags: 
             return
 
         is_restricted = tags.get('access') in self.RESTRICTED_ACCESS_VALUES
-        
-        # Флаг наличия физического препятствия (gate, lift_gate, block, bollard и т.д.)
         is_barrier = 'barrier' in tags
 
-        # Условный Early Exit: жестко отбрасываем закрытые объекты, 
-        # не являющиеся физическими препятствиями.
         if is_restricted and not is_barrier:
             return
          
         fclass = None
         code = None
         
-        # Переопределение для закрытых препятствий.
-        # Выполняется до обработки общих правил LUT для перехвата объекта.
         if is_restricted and is_barrier:
             fclass = "barrier"
-            code = 7209 # Розовый цвет согласно конфигурации
-            
-            # Динамическая инъекция в LUT для корректной диспетчеризации в POIGeometryFactory
-            # Гарантирует, что генератор геометрии построит диагональный крест, а не фоллбэк "rhombus"
+            code = 7209
             LookupTables.POI_SHAPES[fclass] = "barrier"
         else:
-            # Стандартный поиск по таблице маршрутизации LUT для разрешенных объектов
-            for val in tags.values():
-                # Hard cutoff: if POI class is disabled, abort parsing immediately
-                if val in LookupTables.DISABLED_POIS:
-                    return
-                
-                if val in LookupTables.POI_CODES:
-                    fclass = val
-                    code = LookupTables.POI_CODES[val]
+            # 1. Приоритетный поиск по кортежу key=value (разрешение коллизий)
+            for k, v in tags.items():
+                if (k, v) in LookupTables.TAG_ROUTING['pois']:
+                    fclass = LookupTables.TAG_ROUTING['pois'][(k, v)]
                     break
+            
+            # 2. Fallback-поиск по чистому значению (для обратной совместимости)
+            if not fclass:
+                for val in tags.values():
+                    if val in LookupTables.POI_CODES:
+                        fclass = val
+                        break
+            
+            # 3. Фильтрация и извлечение кода рендеринга
+            if fclass:
+                if fclass in LookupTables.DISABLED_POIS:
+                    return
+                code = LookupTables.POI_CODES.get(fclass)
                 
         if code is None:
             return
             
-        # Node attribute extraction
         name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         
-        # Fallback for unnamed POIs: assign fclass to prevent unnamed polygons on the map
         if not name and fclass:
             name = str(fclass)
         
         osm_id = elem.attrib['id']
         
-        # Поиск координат по int-ключу
         node_coord = self.nodes.get(int(osm_id))
         if not node_coord:
             return
 
-        # Object initialization. For the pois layer, the points array 
-        # always contains strictly one coordinate pair (lat, lon).
         feature = MapFeature(
             osm_id=osm_id, 
             fclass=fclass,
@@ -471,9 +472,6 @@ class OSMParser:
             points=[node_coord]
         )
         
-        # Call the calculate_bbox() method for a point (X_min=X_max, Y_min=Y_max).
-        # This is necessary for hardware compatibility, as the watch parser reads 
-        # POI coordinates directly from the Bounding Box fields of the data node.
         feature.calculate_bbox()
         self.pois.append(feature)
 
@@ -496,12 +494,44 @@ class OSMParser:
         name = OSMParser.sanitize_osm_name(tags.get('short_name:en', '').strip() or tags.get('int_name', '').strip() or tags.get('name:en', '').strip() or tags.get('short_name', '').strip() or tags.get('name', '').strip())
         osm_id = elem.attrib['id']
 
-        if 'highway' in tags and len(points) >= 2:
-            fclass = tags['highway']
+        target_layer = None
+        fclass = None
+        
+        # 1. Сквозной поиск по теговой маршрутизации (key=value)
+        for k, v in tags.items():
+            if (k, v) in LookupTables.TAG_ROUTING['roads']:
+                fclass = LookupTables.TAG_ROUTING['roads'][(k, v)]
+                target_layer = 'roads'
+                break
+            elif (k, v) in LookupTables.TAG_ROUTING['landuse']:
+                fclass = LookupTables.TAG_ROUTING['landuse'][(k, v)]
+                target_layer = 'landuse'
+                break
+            elif (k, v) in LookupTables.TAG_ROUTING['water']:
+                fclass = LookupTables.TAG_ROUTING['water'][(k, v)]
+                target_layer = 'landuse' # Аппаратно вода - это полигон
+                break
+
+        # 2. Fallback-эвристика при отсутствии явного правила OSM_Tags в конфигурации
+        if not fclass:
+            if 'highway' in tags:
+                fclass = tags['highway']
+                target_layer = 'roads'
+            elif 'landuse' in tags:
+                fclass = tags['landuse']
+                target_layer = 'landuse'
+            elif 'natural' in tags:
+                fclass = tags['natural']
+                target_layer = 'landuse'
+            elif 'leisure' in tags:
+                fclass = tags['leisure']
+                target_layer = 'landuse'
+
+        # Диспетчеризация записи в списки геометрии
+        if target_layer == 'roads' and len(points) >= 2:
             if fclass == 'track' and 'tracktype' in tags:
                 fclass = fclass + '_' + tags['tracktype']
                 
-            # Check isolated roads blacklist to avoid dropping same-named landuse
             if fclass in LookupTables.DISABLED_ROADS:
                 return
                 
@@ -513,10 +543,7 @@ class OSMParser:
             feature.calculate_bbox()
             self.roads.append(feature)
             
-        elif ('landuse' in tags or 'leisure' in tags or 'natural' in tags) and len(points) >= 4:
-            fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', 'unknown')))
-            
-            # Check isolated landuse blacklist
+        elif target_layer == 'landuse' and len(points) >= 4:
             if fclass in LookupTables.DISABLED_LANDUSE:
                 return
                 
@@ -536,9 +563,21 @@ class OSMParser:
         tags = self._extract_tags(elem)
         if tags.get('type') != 'multipolygon': return
             
-        fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', None)))
+        fclass = None
         
-        # Check isolated landuse blacklist for multipolygons
+        # 1. Поиск через TAG_ROUTING
+        for k, v in tags.items():
+            if (k, v) in LookupTables.TAG_ROUTING['landuse']:
+                fclass = LookupTables.TAG_ROUTING['landuse'][(k, v)]
+                break
+            elif (k, v) in LookupTables.TAG_ROUTING['water']:
+                fclass = LookupTables.TAG_ROUTING['water'][(k, v)]
+                break
+
+        # 2. Fallback
+        if not fclass:
+            fclass = tags.get('landuse', tags.get('leisure', tags.get('natural', None)))
+        
         if not fclass or fclass in LookupTables.DISABLED_LANDUSE: 
             return
             
@@ -552,13 +591,11 @@ class OSMParser:
         
         for member in sorted_members:
             if member.attrib.get('type') == 'way' and 'ref' in member.attrib:
-                ref = int(member.attrib['ref']) # Конвертация для поиска в ways_cache
+                ref = int(member.attrib['ref'])
                 role = member.attrib.get('role', 'outer')
                 
                 if ref in self.ways_cache:
                     ring_points = list(self.ways_cache[ref])                    
-                    
-                    
                     
                     if len(ring_points) >= 4 and ring_points[0] == ring_points[-1]:
                         is_cw = self._is_clockwise(ring_points)
@@ -577,7 +614,7 @@ class OSMParser:
             )
             feature.calculate_bbox()
             self.landuse.append(feature)
-
+            
 class POIGeometryFactory:
     """Генератор низкополигональных примитивов для слоя POI."""
     EARTH_RADIUS = 6378137.0
@@ -594,11 +631,35 @@ class POIGeometryFactory:
         shapes = {
             "rhombus": [(0, R * 1.4), (R, 0), (0, -R * 1.4), (-R, 0), (0, R * 1.4)],
             "triangle": [(0, R), (R, -R), (-R, -R), (0, R)],
-            "house": [(0, R + 2), (R, R - 3), (R, -R), (-R, -R), (-R, R - 3), (0, R + 2)],
+            "house": [
+                (0, R + 1),      # Конёк крыши (начальная точка)
+                (R, R - 3),      # Правый угол свеса крыши
+                (R, -R),         # Правый нижний угол фундамента
+                (-R, -R),        # Левый нижний угол фундамента
+                (-R, R - 3),     # Левый угол свеса крыши
+                (0, R + 1)       # Замыкание контура в конёк крыши
+            ],
             "cup": [(-R, R), (R, R), (R, -R + 2.5), (R - 2.5, -R), (-R + 2.5, -R), (-R, -R + 2.5), (-R, R)],
             "cross": [(-2, R), (2, R), (2, 2), (R, 2), (R, -2), (2, -2), (2, -R), (-2, -R), (-2, -2), (-R, -2), (-R, 2), (-2, 2), (-2, R)],
             "toilet": [(-R, R), (R, R), (0.5, 0), (R, -R), (-R, -R), (-0.5, 0), (-R, R)],
-            "transport": [(-R, R - 1), (R - 3, R - 1), (R, R - 3.0), (R, -R), (R - 2.0, -R), (R - 2.0, -R + 1.5), (R - 4.0, -R + 1.5), (R - 4.0, -R), (-R + 4.0, -R), (-R + 4.0, -R + 1.5), (-R + 2.0, -R + 1.5), (-R + 2.0, -R), (-R, -R), (-R, R - 1)],
+            "transport": [
+                (-R, R - 1), 
+                (R - 3, R - 1), 
+                (R, R - 3.0), 
+                (R, -R), 
+                # Правая колесная арка
+                (R - 1.0, -R), 
+                (R - 1.0, -R + 1.5), 
+                (R - 3.0, -R + 1.5), 
+                (R - 3.0, -R), 
+                # Левая колесная арка
+                (-R + 3.0, -R), 
+                (-R + 3.0, -R + 1.5), 
+                (-R + 1.0, -R + 1.5), 
+                (-R + 1.0, -R), 
+                (-R, -R), 
+                (-R, R - 1)
+            ],
             "shop": [(-R, R), (R, R), (R - 2.5, -R), (-R, -R), (-R, R)],
             "attraction": [(-R, R), (-2.5, R - 2.0), (0.0, R), (2.5, R - 2.0), (R, R), (R, -R), (-R, -R), (-R, R)],
             "bicycle": [
@@ -612,10 +673,23 @@ class POIGeometryFactory:
                 (-5, -R), (-5, 1.5), (0.0, R)
             ],
             "barrier": [
-                (0.0, 3), (R - 3, R), (R, R - 3), (3, 0.0), 
-                (R, -R + 3), (R - 3, -R), (0.0, -3), (-R + 3, -R), 
-                (-R, -R + 3), (-3, 0.0), (-R, R - 3), (-R + 3, R), 
-                (0.0, 3)
+                # Верхняя правая четверть
+                (0.0, 1.5), 
+                (R - 1.5, R), 
+                (R, R - 1.5), 
+                (1.5, 0.0), 
+                # Нижняя правая четверть
+                (R, -R + 1.5), 
+                (R - 1.5, -R), 
+                (0.0, -1.5), 
+                # Нижняя левая четверть
+                (-R + 1.5, -R), 
+                (-R, -R + 1.5), 
+                (-1.5, 0.0), 
+                # Верхняя левая четверть
+                (-R, R - 1.5), 
+                (-R + 1.5, R), 
+                (0.0, 1.5)
             ]
         }
         
@@ -941,7 +1015,7 @@ def main():
             lon, lat = poi.points[0]
             
             # 1. Извлечение типа фигуры из глобального LUT
-            shape_type = LookupTables.POI_SHAPES.get(poi.fclass, "rhombus")
+            shape_type = LookupTables.POI_SHAPES.get(poi.fclass, "rhombus").lower()
             
             # 2. Вызов генератора геометрии
             poi.points = POIGeometryFactory.generate_polygon(shape_type, lon, lat)

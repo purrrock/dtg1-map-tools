@@ -20,6 +20,7 @@ The compiler has been significantly upgraded to bypass native firmware limitatio
 * **Dynamic Hardware Overrides:** Overrides standard routing table rules for specific entities. For instance, physical barriers with restricted access (`access=private/no/permit`) are automatically intercepted prior to LUT evaluation and forced into pink diagonal crosses (Hardware Code: `7209`).
 * **Namespace Collision Isolation:** Blacklist registries are strictly isolated by layer (`pois`, `roads`, `landuse`, `water`) to prevent `fclass` routing conflicts between differently categorized objects.
 * **GPX Track Integration:** Natively compiles custom `.gpx` user routes directly into the hardware vector graph.
+* **Advanced Key-Value Tag Routing:** Fully parses the `OSM_Tags` column from `features.csv` to resolve namespace collisions. Objects are strictly routed using precise `key=value` hash table lookups (e.g., `shop=bicycle` -> `bicycle_shop`) before applying fallback heuristics. This ensures all complex GIS classes are compiled without data loss.
 
 ---
 

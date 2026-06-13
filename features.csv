@@ -22,10 +22,10 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 5145; track_grade3 ;Gray;50; roads ;tracktype=grade3 ;Грунтовка (3 класс);5145;Gray;50;1;
 5146; track_grade4 ;Gray;50; roads ;tracktype=grade4 ;Грунтовка (4 класс);5146;Gray;50;1;
 5147; track_grade5 ;Gray;50; roads ;tracktype=grade5 ;Грунтовка (5 класс);5147;Gray;50;1;
-5151; bridleway ;Gray;20; roads ; highway=bridleway;Конная тропа;5151;Gray;20;1;
-5152; cycleway ;Gray;20; roads ; highway=cycleway;Велодорожка;5152;Gray;20;1;
-5153; footway ;Gray;20; roads ; highway=footway;Пешеходная дорожка;5153;Gray;20;1;
-5154; path ;Gray;20; roads ; highway=path;Тропинка;5154;Gray;20;1;
+5151; bridleway ;Gray;20; roads ; highway=bridleway;Конная тропа;5151;Gray;50;1;
+5152; cycleway ;Gray;20; roads ; highway=cycleway;Велодорожка;5152;Gray;50;1;
+5153; footway ;Gray;20; roads ; highway=footway;Пешеходная дорожка;5153;Gray;50;1;
+5154; path ;Gray;20; roads ; highway=path;Тропинка;5154;Gray;50;1;
 5155; steps ;Gray;20; roads ; highway=steps ;Ступени;5155;Gray;20;1;
 5199; unknown ;Gray;50; roads ; highway=road ;Неизвестно;5199;Gray;50;1;
 7201; forest ; Green ;200; landuse ; landuse=forest;Лес;7201; Green ;200;1;
@@ -198,7 +198,7 @@ Code ;fclass ;Color ;LOD;Layer ;OSM_Tags ;Description ;Remap_Code;Remap_Color;Re
 2742;viewpoint;Black;100;pois;tourism=viewpoint;Смотровая площадка;7219;Salmon;500;1;attraction
 2743;zoo;Black;100;pois;tourism=zoo;Зоопарк;7219;Salmon;500;0;attraction
 2744;theme_park;Black;100;pois;tourism=theme_park;Парк развлечений;7219;Salmon;500;0;attraction
-2901;toilet;Black;100;pois;amenity=toilets;Туалет;7219;Salmon;500;1;toilet
+2901;toilet;Black;100;pois;amenity=toilets;Туалет;8200;Blue;500;1;toilet
 2902;bench;Black;100;pois;amenity=bench;Скамья;7219;Salmon;500;0;rhombus
 2903;drinking_water;Black;100;pois;amenity=drinking_water;Питьевая вода;8200;Blue;500;1;cup
 2904;fountain;Black;100;pois;amenity=fountain;Фонтан;8200;Blue;500;0;rhombus
