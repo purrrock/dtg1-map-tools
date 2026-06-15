@@ -26,21 +26,21 @@ from typing import List, Tuple, Dict, Any, Optional
 # ==============================================================================
 
 class HWConfig:
-    """Аппаратные и системные константы платформы ATS3085S"""
+    """Hardware and system constants for the ATS3085S platform"""
     YZL_HEADER_SIZE = 32
-    NODE_SIZE = 28           # Унифицированный размер узла (Data Node / Nav Node)
-    CHUNK_SIZE = 14          # Максимальное количество объектов в кластере
-    DBF_HEADER_LEN = 161     # Заголовок dBase III
-    DBF_RECORD_LEN = 145     # Длина фиксированной записи dBase III
+    NODE_SIZE = 28           # Unified node size (Data Node / Nav Node)
+    CHUNK_SIZE = 14          # Maximum number of objects in a cluster
+    DBF_HEADER_LEN = 161     # dBase III header
+    DBF_RECORD_LEN = 145     # Fixed-length dBase III record
     
-    # Системные коды отрисовки
+    # System rendering codes
     WATER_CODE = 8200
     DEFAULT_HIGHWAY_CODE = 5142
     DEFAULT_POLYGON_CODE = 7208
     DEFAULT_POI_CODE = 2724
 
-# Глобальный неизменяемый кортеж топонимических дескрипторов.
-# Строго отсортирован по убыванию длины для алгоритма startswith.
+# Global immutable tuple of toponymic descriptors.
+# Strictly sorted by descending length for the startswith algorithm.
 _STOP_WORDS = (
     "restaurant", "praspiekt", "boulevard", "проспект", "переулок", "ресторан", 
     "праспект", "рэстаран", "praspekt", "stancyya", "prypynak", "restaran",
@@ -55,26 +55,26 @@ _STOP_WORDS = (
 )
 
 class LookupTables:
-    """Динамические таблицы стилей (LUT) и реестры аппаратного Early Exit"""
+    """Dynamic style tables (LUT) and hardware early-exit registries"""
     HIGHWAY_CODES: Dict[str, int] = {}
     POLYGON_CODES: Dict[str, int] = {}
     POI_CODES: Dict[str, int] = {}
     DISPLAY_SCALES: Dict[int, int] = {}
     POI_SHAPES: Dict[str, str] = {}
     
-    # Изолированные блэклисты (защита от Namespace Collisions)
+    # Isolated blacklists (protection against namespace collisions)
     DISABLED_ROADS: set = set()
     DISABLED_LANDUSE: set = set()
     DISABLED_POIS: set = set()
     
-    # Реестры теговой маршрутизации
+    # Tag routing registries
     TAG_ROUTING: Dict[str, Dict[Tuple[str, str], str]] = {
         'pois': {}, 'roads': {}, 'landuse': {}, 'water': {}
     }
 
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
-        """Парсинг внешнего конфигурационного файла маршрутизации."""
+        """Parse the external routing configuration file."""
         if not os.path.exists(filepath):
             print(f"[-] Error: Configuration file {filepath} not found.")
             sys.exit(1)
@@ -95,7 +95,7 @@ class LookupTables:
                     layer = row[4].strip()
                     osm_tag = row[5].strip()             
                     
-                    # Software Culling (Early Exit парсинг)
+                    # Software culling (early-exit parsing)
                     enabled_flag = row[10].strip().lower()
                     if enabled_flag in ('0', 'false', 'no', 'off', ''):
                         if layer == 'roads': cls.DISABLED_ROADS.add(fclass)
@@ -103,7 +103,7 @@ class LookupTables:
                         else: cls.DISABLED_LANDUSE.add(fclass)
                         continue 
                     
-                    # Интеграция теговой маршрутизации (Key-Value)
+                    # Tag routing integration (key-value)
                     if osm_tag and "=" in osm_tag:
                         for tag_pair in osm_tag.split(','):
                             if "=" in tag_pair:
@@ -116,7 +116,7 @@ class LookupTables:
                     except ValueError:
                         continue
 
-                    # Распределение по слоям
+                    # Layer distribution
                     if layer == 'roads':
                         cls.HIGHWAY_CODES[fclass] = remap_code
                         cls.DISPLAY_SCALES[remap_code] = remap_lod
@@ -134,7 +134,7 @@ class LookupTables:
             print(f"    Successfully imported rules: {loaded_records}")
             print(f"[i] LUT loaded. Roads: {len(cls.HIGHWAY_CODES)}, Polygons: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
             
-            # Страховочная инициализация LOD для воды
+            # Fail-safe LOD initialization for water
             if HWConfig.WATER_CODE not in cls.DISPLAY_SCALES:
                 cls.DISPLAY_SCALES[HWConfig.WATER_CODE] = 1000
                 
@@ -148,7 +148,7 @@ class LookupTables:
 
 @dataclass
 class MapFeature:
-    """Описывает единичный картографический примитив (Дорога, Полигон, POI)"""
+    """Represents a single map primitive (Road, Polygon, POI)"""
     osm_id: str
     fclass: str
     code: int
@@ -157,12 +157,12 @@ class MapFeature:
     parts: List[int] = field(default_factory=lambda: [0])
     
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
-    v1: int = 0        # Абсолютное смещение геометрии в файле .mlp
-    v2: int = 0        # Индекс строки в атрибутивной БД .db
-    mlp_size: int = 0  # Бинарный размер тела в .mlp
+    v1: int = 0        # Absolute geometry offset in the .mlp file
+    v2: int = 0        # Row index in the attribute DB .db
+    mlp_size: int = 0  # Binary body size in the .mlp file
 
     def calculate_bbox(self) -> None:
-        """Прямой расчет Bounding Box (оптимизировано list comprehensions)."""
+        """Direct bounding box calculation (optimized with list comprehensions)."""
         if not self.points:
             return
         xs = [p[0] for p in self.points]
@@ -171,8 +171,8 @@ class MapFeature:
 
     def pack_data_node(self) -> bytes:
         """
-        Упаковка Data Node (строго 28 байт).
-        Формат (C-Union): [BBox 16b] [Type 4b] [v1 4b] [v2 4b]
+        Packing a Data Node (strictly 28 bytes).
+        Format (C-Union): [BBox 16b] [Type 4b] [v1 4b] [v2 4b]
         """
         return struct.pack(
             "<ffffIII", 
@@ -185,14 +185,14 @@ class MapFeature:
 # ==============================================================================
 
 class POIGeometryFactory:
-    """Генератор низкополигональных примитивов для слоя POI."""
+    """Generator of low-polygon primitives for the POI layer."""
     EARTH_RADIUS = 6378137.0
     R = 4.1
-    PERSPECTIVE_Y_MULTIPLIER = 1.5 # Компенсация искажений дисплея ATS3085S
+    PERSPECTIVE_Y_MULTIPLIER = 1.5 # Compensation for ATS3085S display distortion
 
     @classmethod
     def generate_polygon(cls, shape_type: str, center_lon: float, center_lat: float) -> List[Tuple[float, float]]:
-        """Конвертация метрических форм-факторов в сферические полигоны (WGS 84)."""
+        """Convert metric shapes into spherical polygons (WGS 84)."""
         R = cls.R
         
         shapes = {
@@ -228,7 +228,7 @@ class POIGeometryFactory:
 # ==============================================================================
 
 class GPXParser:
-    """Извлечение геометрии треков для инъекции в слой Roads."""
+    """Extract track geometry for injection into the Roads layer."""
     
     @staticmethod
     def parse_track(filepath: str) -> Tuple[str, List[Tuple[float, float]]]:
@@ -239,7 +239,7 @@ class GPXParser:
         root = tree.getroot()
         ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}
         
-        # Каскадный поиск имени
+        # Cascading name lookup
         track_name = "Route" 
         metadata_name = root.find('.//gpx:metadata/gpx:name', ns)
         if metadata_name is not None and metadata_name.text:
@@ -249,7 +249,7 @@ class GPXParser:
             if trk_name is not None and trk_name.text:
                 track_name = trk_name.text.strip()
                 
-        # Извлечение геометрии
+        # Geometry extraction
         points = []
         for trkpt in root.findall('.//gpx:trkpt', ns):
             points.append((float(trkpt.attrib['lon']), float(trkpt.attrib['lat'])))
@@ -257,7 +257,7 @@ class GPXParser:
         return track_name, points
 
 class OSMParser:
-    """Двухпроходный потоковый OSM-парсер с обработкой топологии."""
+    """Two-pass streaming OSM parser with topology handling."""
     RESTRICTED_ACCESS_VALUES = {'private', 'permit', 'no'}
     
     def __init__(self, osm_file: str):
@@ -271,7 +271,7 @@ class OSMParser:
 
     @staticmethod
     def _is_clockwise(points: List[Tuple[float, float]]) -> bool:
-        """Математическая проверка ориентации кольца (Отрицательная площадь == CW)."""
+        """Mathematical ring orientation check (negative area == CW)."""
         sum_area = sum((points[i][0] * points[i+1][1] - points[i+1][0] * points[i][1]) 
                        for i in range(len(points) - 1))
         return sum_area < 0
@@ -282,7 +282,7 @@ class OSMParser:
         return self.roads, self.landuse, self.pois
 
     def _pass1_cache_nodes(self) -> None:
-        """Кэширование геометрии узлов (Микрооптимизировано под C-бэкенд VM Python)."""
+        """Cache node geometry (micro-optimized for the Python VM's C backend)."""
         print("[>] Pass 1: Caching nodes...")
         context = ET.iterparse(self.osm_file, events=('start', 'end'))
         context = iter(context)
@@ -290,7 +290,7 @@ class OSMParser:
         try: _, root = next(context)
         except StopIteration: return
 
-        # Локализация для устранения LOAD_ATTR
+        # Local binding to eliminate LOAD_ATTR
         nodes_cache = self.nodes
         root_clear = root.clear
         TARGET_TAGS = {'node', 'way', 'relation'}
@@ -303,7 +303,7 @@ class OSMParser:
                     nodes_cache[int(attr['id'])] = (float(attr['lon']), float(attr['lat']))
                     count += 1
                     
-                    # Быстрый делитель через побитовое И
+                    # Fast modulo check via bitwise AND
                     if not (count & 0x1FFFF):
                         sys.stdout.write(f"\r    Nodes cached: {count:,}")
                         sys.stdout.flush()
@@ -315,7 +315,7 @@ class OSMParser:
         print(f"\r    Nodes loaded: {len(nodes_cache):,}       ")
 
     def _pass2_build_features(self) -> None:
-        """Сборка примитивов по топологии."""
+        """Assemble primitives by topology."""
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
         context = iter(ET.iterparse(self.osm_file, events=('start', 'end')))
         
@@ -326,7 +326,7 @@ class OSMParser:
         stdout_write = sys.stdout.write
         stdout_flush = sys.stdout.flush
         
-        # O(1) Таблица диспетчеризации (Jump Table)
+        # O(1) dispatch table (jump table)
         processors = {
             'way': self._process_way,
             'relation': self._process_relation,
@@ -355,7 +355,7 @@ class OSMParser:
 
     @staticmethod
     def sanitize_osm_name(name: str) -> str:
-        """Нормализация строки: удаление пробелов, перенос дескрипторов, усечение."""
+        """Normalize a string: trim spaces, move descriptors, truncate."""
         if not name: return ""
             
         name = name.strip()
@@ -370,7 +370,7 @@ class OSMParser:
                     name = f"{core_name} {word.lower()}"
                 break 
                 
-        # Аппаратное экранирование пробелов в '_'
+        # Hardware escaping of spaces into '_'
         name = name.replace(" ", "_")
         
         if len(name) > 22:
@@ -441,7 +441,7 @@ class OSMParser:
 
         target_layer = fclass = None
         
-        # Маршрутизация тегов
+        # Tag routing
         for k, v in tags.items():
             if (k, v) in LookupTables.TAG_ROUTING['roads']:
                 fclass, target_layer = LookupTables.TAG_ROUTING['roads'][(k, v)], 'roads'
@@ -453,14 +453,14 @@ class OSMParser:
                 fclass, target_layer = LookupTables.TAG_ROUTING['water'][(k, v)], 'landuse'
                 break
 
-        # Fallback эвристика
+        # Fallback heuristic
         if not fclass:
             if 'highway' in tags: fclass, target_layer = tags['highway'], 'roads'
             elif 'landuse' in tags: fclass, target_layer = tags['landuse'], 'landuse'
             elif 'natural' in tags: fclass, target_layer = tags['natural'], 'landuse'
             elif 'leisure' in tags: fclass, target_layer = tags['leisure'], 'landuse'
 
-        # Диспетчеризация
+        # Dispatch
         if target_layer == 'roads' and len(points) >= 2:
             if fclass == 'track' and 'tracktype' in tags: fclass += f'_{tags["tracktype"]}'
             if fclass in LookupTables.DISABLED_ROADS: return
@@ -532,11 +532,11 @@ class OSMParser:
 # ==============================================================================
 
 class MapCompiler:
-    """Генератор аппаратных бинарных структур (YZL/SQT/DBF)."""
+    """Generator of hardware binary structures (YZL/SQT/DBF)."""
 
     @staticmethod
     def _write_yzl_container(filepath: str, payload: bytes, is_idx: bool, lod2_size: int = 0) -> None:
-        """Инкапсуляция данных в системный контейнер YZL."""
+        """Encapsulate data in the system YZL container."""
         payload_size = len(payload)
         md5_hash = hashlib.md5(payload).digest()
         
@@ -625,7 +625,7 @@ class MapCompiler:
 
     @classmethod
     def _pack_clusters(cls, records: List[MapFeature], idx_buffer: bytearray) -> None:
-        """Инъекция SQT-кластеров в буфер индекса."""
+        """Inject SQT clusters into the index buffer."""
         clusters = [records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(records), HWConfig.CHUNK_SIZE)]
         
         if len(clusters) > 1:
@@ -652,7 +652,7 @@ class MapCompiler:
         idx_buffer = bytearray()
         
         if is_poi:
-            # POI слой без .mlp (координаты в BBox). 1 уровень LOD.
+            # POI layer without .mlp (coordinates stored in BBox). 1 LOD level.
             idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00') 
             if not features:
                 idx_buffer.extend(struct.pack("<II", 0, 0))
@@ -663,7 +663,7 @@ class MapCompiler:
             cls._write_yzl_container(filepath, idx_buffer, is_idx=False)
 
         else:
-            # Стандартная многоуровневая геометрия (LOD 0, 1, 2)
+            # Standard multi-level geometry (LOD 0, 1, 2)
             lod_filters = [
                 lambda c: True,
                 lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500, 
@@ -742,7 +742,7 @@ def main():
     
     meta_all: List[MapFeature] = []
 
-    # 1. Слой Дорог
+    # 1. Roads layer
     if roads_data:
         MapCompiler.compile_mlp(roads_data, "roads.mlp")
         MapCompiler.compile_db(roads_data, "roads.db")
@@ -762,7 +762,7 @@ def main():
         print(f"    Successfully baked {len(pois_data)} POIs.")
         pois_data.clear() 
 
-    # 2. Слои Landuse и Water
+    # 2. Landuse and Water layers
     landuse_only = [f for f in landuse_data if f.code != HWConfig.WATER_CODE]
     water_only = [f for f in landuse_data if f.code == HWConfig.WATER_CODE]
 
@@ -780,7 +780,7 @@ def main():
         MapCompiler.compile_idx(water_only, "water.idx")
         meta_all.extend(water_only)
 
-    # 3. Нативная логика слоя POI
+    # 3. Native POI layer logic
     if args.poi_mode == "none": print("[>] POI layer skipped ('none' mode selected).")
     elif args.poi_mode == "native":
         if pois_data:

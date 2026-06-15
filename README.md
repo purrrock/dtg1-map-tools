@@ -1,7 +1,7 @@
 🇷🇺 [Читать на русском](README_ru.md)
-# Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK (ATS3085S Hardware Platform, Zephyr RTOS Software Platform)
+# Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK / Amolde HD300 Pro (ATS3085S Hardware Platform, Zephyr RTOS Software Platform)
 
-A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for **DT NO.1 G1**, **VWAR**, and **KKTICK** smartwatches (as well as other white-label devices based on the **Actions Semiconductor ATS3085S** hardware platform).
+A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for **DT NO.1 G1**, **VWAR**, and **KKTICK** **Amolde** smartwatches (as well as other white-label devices based on the **Actions Semiconductor ATS3085S** hardware platform).
 
 If you are looking for **how to install custom maps on a smartwatch** or need better **DT NO.1 G1 offline maps** to sync via the **WearPro** app, this project provides a complete open-source solution. 
 
@@ -33,6 +33,20 @@ Currently, the codebase provides 100% binary compatibility with the hardware par
 * `dtg1_map_compiler.py` — Vector map compiler. Automatically parses the source OpenStreetMap XML file (`map.osm`), performs topology validation, distributes objects by levels of detail, applies style aliasing, and generates ready-to-use file packages.
 * `features.csv` — Modifiable style routing table (LUT) with software culling (Blacklist) support.
 * `features_factory.csv` — Original dump of the factory style table (for backup and resetting to factory display parameters).
+
+---
+
+## ⛰️ Elevation Contours (Experimental Community Tools)
+
+Thanks to contributions from the XDA-Developers community, the repository now includes experimental utilities for processing topographic elevation contours (located in the `/contours` directory). 
+
+These scripts allow you to merge elevation LineStrings into your base OpenStreetMap data before compilation.
+
+**⚠️ CRITICAL HARDWARE WARNING:** The ATS3085S graphics coprocessor has strict limitations on the number of simultaneous vectors it can draw. Elevation contours consist of thousands of dense points. If you compile them with a high Level of Detail, the watch will experience a memory overflow.
+
+If you use the contours feature, you **MUST** configure your `features.csv`.
+
+Read `/contours/contours.txt`.
 
 ---
 

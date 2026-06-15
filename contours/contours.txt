@@ -1,0 +1,87 @@
+Integrating the contour map into the offline map.
+
+How to Create Custom Offline Maps
+
+Dedicated offline map format for smartwatches based on the Actions Technology
+ATS3085S platform chip.
+
+🛠️ Prerequisites
+
+1. Install Python 3.8+ and GDAL (Can be used via OSGeo4W or the built-in
+terminal in QGIS).
+2. Install the Python package: pip install pyshp
+3. Download and extract the open-source tool: dtg1-map-tools
+
+📥 Step 1: Download Base Data
+
+1. Download OSM Base Map: Go to BBBike Extract, select your area (e.g.,
+Nantou), choose OSM XML as the format. After downloading, extract it and
+rename the file to base.osm.
+2. Download DEM Elevation Data: Go to OpenTopography, select the exact same
+area, download it in GeoTIFF format, and rename the file to dem.tif.
+
+📥 Step 1.5: Optimize Base Data
+
+Run:
+python osm_optimizer.py base.osm base_map.osm
+
+⛰️ Step 2: Generate and Process Contour Lines (GDAL)
+
+Open Command Prompt (CMD) or Terminal, ensure you are in the same directory as
+dem.tif, and execute the following two commands in order:
+
+# 1. Generate a 10m interval contour Shapefile (attribute name set to 'ele')
+gdal_contour -i 10 -a ele dem.tif contours.shp
+
+# 2. Force coordinate system conversion to WGS84 (EPSG:4326) and simplify lines to prevent watch lag
+ogr2ogr -t_srs EPSG:4326 -simplify 0.00005 contours_final.shp contours.shp
+
+(After execution, you should see contours_final.shp and its associated files
+like .shx, .dbf, etc., in your folder)
+
+🐍 Step 3: Generate Compliant OSM Contour Lines
+
+python shp2osm.py contours_final.shp contours.osm
+
+🔗 Step 4: Safely Merge Maps
+
+This script usesstream re ading and will absolutely not corrupt the structure of large XML files.
+
+python merge.py
+
+🎨 Step 5: Modify features.csv (🚨 The Most Critical Step)
+
+Open features.csv located in the dtg1-map-tools folder. ABSOLUTELY DO NOT add
+the rules at the beginning or in the middle of the file! Because the compiler
+reads from top to bottom, later rules will overwrite earlier ones.
+
+1. Scroll down to the absolute bottom of features.csv (press Enter to create a
+new line after the very last line).
+2. Paste the following two lines:
+
+9901; contour_major ;Yellow;1000; roads ; highway=contour_major_test ;Contour Major;5113;Yellow;1000;1;
+9902; contour_minor ;Gray;100; roads ; highway=contour_minor_test ;Contour Minor;5124;Gray;100;1;
+
+⚙️ Step 6: Compilation
+
+Place map.osm into the dtg1-map-tools folder and execute in the terminal:
+
+python dtg1_map_compiler.py
+
+(Check that the output displays: Assembled: 26950 roads or a similar number,
+which means your 5000+ contour lines have been successfully added)
+
+📱 Step 7: Real-Device Testing on the Watch (🔥 Clearing the Cache is Extremely Important)
+
+1. Connect the watch via USB.
+2. Enter the MAP folder inside the watch's internal storage.
+3. Create a brand new, clean folder, for example, Topo_Final.
+4. Copy all newly generated files (roads.mlp, roads.idx, roads.db, landuse.mlp,
+landuse.idx, landuse.db, water.mlp, water.idx, water.db, map.name) into
+Topo_Final.
+
+Testing the results: When you open the map, you should directly see thick black
+lines (100m major contours). When you zoom in slightly, the thin gray lines (10m
+minor contours) will smoothly appear. When you zoom out to a 100m or 200m scale,
+these lines will absolutely not disappear, and panning operations will remain
+smooth.
