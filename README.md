@@ -1,7 +1,7 @@
 🇷🇺 [Читать на русском](README_ru.md)
 # Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK / Amolde HD300 Pro (ATS3085S Hardware Platform, Zephyr RTOS Software Platform)
 
-A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for **DT NO.1 G1**, **VWAR**, and **KKTICK** **Amolde** smartwatches (as well as other white-label devices based on the **Actions Semiconductor ATS3085S** hardware platform).
+A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for **DT NO.1 G1**, **VWAR**, **KKTICK** and **Amolde** smartwatches (as well as other white-label devices based on the **Actions Semiconductor ATS3085S** hardware platform).
 
 If you are looking for **how to install custom maps on a smartwatch** or need better **DT NO.1 G1 offline maps** to sync via the **WearPro** app, this project provides a complete open-source solution. 
 
@@ -46,7 +46,7 @@ These scripts allow you to merge elevation LineStrings into your base OpenStreet
 
 If you use the contours feature, you **MUST** configure your `features.csv`.
 
-Read `/contours/contours.txt`.
+Read `/contours/README_contours.md`.
 
 ---
 
