@@ -12,12 +12,45 @@ Dedicated offline map format for smartwatches based on the Actions Technology AT
    ```
 3. Download and extract the open-source tool: `dtg1-map-tools`
 
+	#### ⚙️ Detailed Guide: Installing GDAL
+
+	Because GDAL relies on complex C++ binaries, standard `pip install gdal` will fail on most systems. Use the following pre-compiled distribution methods based on your OS:
+
+	**For Windows (OSGeo4W Method):**
+	1. Download the **OSGeo4W Network Installer** from `https://trac.osgeo.org/osgeo4w/`.
+	2. Run the installer, select **Express Install**, and ensure the **GDAL** package is checked.
+	3. Once the installation is complete, do not use the standard CMD. Open your Windows Start menu, search for **OSGeo4W Shell**, and run it. Use this specialized terminal (via the `cd` command) to navigate to your map folder and execute all `gdal_contour` commands.
+	*(Alternative: If you already have QGIS installed, it includes GDAL. Just find and launch the "OSGeo4W Shell" from the QGIS folder in your Start menu).*
+
+	**For Linux (Debian/Ubuntu/Mint):**
+	The compiled GDAL binaries are available in the stable repositories. Open your terminal and execute:
+	```bash
+	sudo apt update && sudo apt install gdal-bin
+	```
+	
+	To verify the installation on any OS, type `gdalinfo --version` in your terminal.
+
 ---
 
 ### 📥 Step 1: Download Base Data
 
 1. **Download OSM Base Map**: Go to BBBike Extract, select your area (e.g., Nantou), choose OSM XML as the format. After downloading, extract it and rename the file to `base.osm`.
+
+---
+
 2. **Download DEM Elevation Data**: Go to OpenTopography, select the exact same area, download it in GeoTIFF format, and rename the file to `dem.tif`.
+
+#### 🌐 Detailed Guide: Downloading DEM Elevation Data
+
+To generate contour lines, you need a Digital Elevation Model (DEM) raster file.
+	1. Go to [OpenTopography](https://portal.opentopography.org/datasets) and select **SRTM GL1 (30m)** or **Copernicus DEM GLO-30** under the Global & 	Regional DEM section.
+	2. Click **Select a Region** and draw a bounding box around your target area. 
+	> ⚠️ **Technical Requirement:** Make this bounding box 1–2 km larger than your `base.osm` area. If they are exactly the same size, contour lines might abruptly clip or generate artifacts at the edges of the smartwatch screen.
+	3. Scroll down to Data Output Format and strictly select **GeoTiff**. Uncheck all Visualization options (Hillshade, Color Relief, etc.)—we only need the raw mathematical matrix, not image renderings.
+	4. Enter your email in the Job Description section and click **Submit**.
+	5. Once the job finishes, extract the downloaded archive, find the generated `.tif` file, rename it to `dem.tif`, and place it in the same directory as your Python scripts.
+
+---
 
 ### 📥 Step 1.5: Optimize Base Data
 
