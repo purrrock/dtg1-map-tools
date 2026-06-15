@@ -1,5 +1,5 @@
 🇷🇺 [Читать на русском](README_ru.md)
-# Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK (ATS3085S Platform)
+# Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK (ATS3085S Hardware Platform, Zephyr RTOS Software Platform)
 
 A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for **DT NO.1 G1**, **VWAR**, and **KKTICK** smartwatches (as well as other white-label devices based on the **Actions Semiconductor ATS3085S** hardware platform).
 
