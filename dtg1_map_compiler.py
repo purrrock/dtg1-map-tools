@@ -275,7 +275,35 @@ class OSMParser:
         sum_area = sum((points[i][0] * points[i+1][1] - points[i+1][0] * points[i][1]) 
                        for i in range(len(points) - 1))
         return sum_area < 0
+        
+    def _analyze_road_surface(self, tags: Dict[str, str]) -> Optional[str]:
+        """
+        Анализирует теги качества и покрытия дороги.
+        Приоритет отдается тегу smoothness, так как разбитый асфальт (surface=asphalt + smoothness=bad) 
+        для навигации должен трактоваться как unpaved (серый цвет).
+        
+        Если теги отсутствуют, возвращает None, позволяя компилятору использовать 
+        базовые цвета маршрутизации из LUT (features.csv).
+        """
+        smoothness = tags.get("smoothness")
+        if smoothness in {"bad", "very_bad", "horrible", "very_horrible", "impassable"}:
+            return "unpaved"
+        if smoothness in {"excellent", "good", "intermediate"}:
+            return "paved"
 
+        surface = tags.get("surface")
+        if surface in {"unpaved", "grass_paver", "sett", "unhewn_cobblestone", "cobblestone", 
+                       "bricks", "metal_grid", "wood", "stepping_stones", "tiles", 
+                       "fibre_reinforced_polymer_grate", "compacted", "fine_gravel", "gravel", 
+                       "shells", "rock", "pebblestone", "ground", "dirt", "earth", "laterite", 
+                       "grass", "mud", "sand", "woodchips", "snow", "ice", "salt"}:
+            return "unpaved"
+        if surface in {"paved", "asphalt", "chipseal", "concrete", "paving_stones", "metal"}:
+            return "paved"
+
+        # Pass-through to LUT features.csv
+        return None
+        
     def parse(self) -> Tuple[List[MapFeature], List[MapFeature], List[MapFeature]]:
         self._pass1_cache_nodes()
         self._pass2_build_features()
@@ -465,7 +493,36 @@ class OSMParser:
             if fclass == 'track' and 'tracktype' in tags: fclass += f'_{tags["tracktype"]}'
             if fclass in LookupTables.DISABLED_ROADS: return
                 
+            # 1. Базовое присвоение кода из LUT (features.csv)
             code = LookupTables.HIGHWAY_CODES.get(fclass, HWConfig.DEFAULT_HIGHWAY_CODE)
+            
+            # =================================================================
+            # 2. HARDWARE OVERRIDE (Dynamic Tag Interception)
+            # Перехватываем физическое покрытие и переопределяем цвет линии,
+            # игнорируя базовое значение из таблицы маршрутизации.
+            # =================================================================
+            surface_state = self._analyze_road_surface(tags)
+            if surface_state == "unpaved":
+                # Любая дорога без твердого покрытия (даже primary) становится серой
+                code = 5142 
+            
+            elif surface_state == "paved":
+                # Маска исключений: блокируем апгрейд до желтого цвета для 
+                # пешеходной, велосипедной и служебной инфраструктуры.
+                # Для этих fclass сохранится оригинальный 'code', извлеченный из features.csv.
+                non_vehicle_classes = {
+                    'footway', 'path', 'steps', 'pedestrian', 
+                    'cycleway', 'bridleway', 'corridor', 'elevator', 'escalator'
+                }
+                
+                # Если это не пешеходная зона, переводим в желтый цвет
+                if fclass not in non_vehicle_classes:
+                    code = 5113 
+            # =================================================================                
+            # Если surface_state == None, сохраняется оригинальный code из LUT
+            # =================================================================
+
+            # 3. Упаковка финального кода в узел данных
             feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points)
             feature.calculate_bbox()
             self.roads.append(feature)
