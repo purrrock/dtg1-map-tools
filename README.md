@@ -68,6 +68,25 @@ Read `/contours/README_contours.md`.
 
 ---
 
+### ⚡ Preprocessing Large Maps (Highly Recommended)
+
+If you are compiling large areas, entire countries, or experiencing Out-Of-Memory errors on your PC during compilation, you should preprocess your raw `.osm` file using the `osm_optimizer.py` utility. 
+
+The smartwatch's hardware graphics accelerator (ATS3085S) has vertex buffer limitations. Rendering excessively long, continuous lines (like major highways) as single objects can cause the watch UI to freeze or trigger a Soft Reset. The optimizer solves this by:
+
+1. **Hardware-Safe Chunking:** Safely slicing extremely long linear routes into smaller segments (e.g., 100 vertices per chunk) while preserving the mathematical topology of closed polygons (lakes, forests) to prevent scanline rendering glitches.
+2. **Aggressive Metadata Stripping:** Removing heavy OSM metadata (timestamps, users, changesets) and dropping globally blacklisted tags (e.g., `power`, `building`, `addr:*`) to drastically reduce the intermediate file size.
+
+**How to use the optimizer:**
+
+```bash
+# 1. Preprocess and shrink the raw OSM file
+python osm_optimizer.py map.osm map_optimized.osm
+
+# 2. Feed the optimized file into the main compiler (rename map_optimized.osm to map.osm)
+python dtg1_map_compiler.py
+```
+---
 ## Command Line Interface (CLI) Parameters
 
 The compiler implements the management of the Points of Interest (POI) layer, the output of which is hardware-suppressed by the ATS3085S graphics engine in current firmware versions.

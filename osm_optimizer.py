@@ -20,10 +20,6 @@ except ImportError:
 # ==========================================
 @njit
 def douglas_peucker_indices_fast(pts, epsilon):
-    """
-    Реализация алгоритма Дугласа-Пекера с использованием JIT-компиляции Numba.
-    Обеспечивает высокую скорость работы за счет компиляции в машинный код (LLVM).
-    """
     n = len(pts)
     if n < 3:
         arr = np.empty(n, dtype=np.int64)
@@ -32,7 +28,6 @@ def douglas_peucker_indices_fast(pts, epsilon):
         return arr
 
     epsilon_sq = epsilon * epsilon
-
     stack_start = np.zeros(n, dtype=np.int64)
     stack_end = np.zeros(n, dtype=np.int64)
     stack_ptr = 0
@@ -93,9 +88,6 @@ def douglas_peucker_indices_fast(pts, epsilon):
 # Phase 1: PyOsmium Handler (Pure C++ Way Parsing)
 # ==========================================
 class WayOptimizer(o.SimpleHandler):
-    """
-    Обработчик PyOsmium. Извлекает геометрию на уровне C++.
-    """
     def __init__(self, temp_ways_file, max_nodes_per_way, epsilon_deg):
         super().__init__()
         self.tmp_f = open(temp_ways_file, 'wb')
@@ -105,27 +97,69 @@ class WayOptimizer(o.SimpleHandler):
         self.used_node_ids = set()
         self.ways_count = 0
 
-        self.ignore_highway_types = {'corridor', 'elevator'}
+        # Триггеры на удаление объекта
+        self.drop_way_triggers = {'building', 'power'}
+        # Безусловное удаление (коридоры внутри зданий)
+        self.drop_way_kv = {'highway': {'corridor', 'elevator'}}
         
-        # [ОБНОВЛЕНО] В Whitelist добавлен тег 'barrier' для сохранения линейной геометрии препятствий
-        self.keep_tags = {
-            'highway', 'waterway', 'natural', 'name', 'landuse', 
-            'amenity', 'leisure', 'tourism', 'shop', 'sport', 'barrier'
+        # [НОВОЕ] Ключи выживания. Если объект имеет хотя бы один из них, он не будет удален
+        self.survival_keys = {
+            'landuse', 'natural', 'amenity', 'leisure', 'tourism', 
+            'shop', 'sport', 'highway', 'waterway', 'barrier',
+            'railway', 'aeroway', 'man_made', 'historic', 'route'
         }
 
+        # Теги, которые однозначно образуют полигон
+        self.polygon_tags = {
+            'landuse', 'natural', 'amenity', 'leisure', 'tourism', 
+            'shop', 'sport', 'man_made', 'historic', 'aeroway'
+        }
+
+        # [ОБНОВЛЕНО] Списки стирания тегов. Добавлены operator, start_date, generator, plant
+        self.drop_tag_keys = {
+            'wikidata', 'wikipedia', 'phone', 'website', 'url', 
+            'opening_hours', 'email', 'maxspeed', 'lanes', 'oneway', 
+            'note', 'source', 'fixme', 'building', 'power',
+            'operator', 'start_date'
+        }
+        self.drop_tag_prefixes = ('addr:', 'contact:', 'payment:', 'source:', 'generator:', 'plant:')
+
     def way(self, w):
-        is_ignored = False
+        has_drop_trigger = False
+        has_survival_tag = False
+        is_linear_highway = False
         valid_tags = []
 
         for tag in w.tags:
-            if tag.k == 'highway' and tag.v in self.ignore_highway_types:
-                is_ignored = True
-                break
-            if tag.k in self.keep_tags:
+            # 1. Безусловные фатальные совпадения
+            if tag.k in self.drop_way_kv and tag.v in self.drop_way_kv[tag.k]:
+                return 
+
+            # 2. Триггеры возможного удаления (building, power)
+            if tag.k in self.drop_way_triggers:
+                has_drop_trigger = True
+                
+            # 3. Триггеры выживания (landuse, amenity, shop...)
+            if tag.k in self.survival_keys:
+                has_survival_tag = True
+
+            if tag.k == 'highway':
+                is_linear_highway = True
+
+            # 4. Сбор чистых тегов (за исключением мусора)
+            if tag.k not in self.drop_tag_keys and not tag.k.startswith(self.drop_tag_prefixes):
                 valid_tags.append((tag.k, tag.v))
 
-        if is_ignored or not valid_tags or len(w.nodes) == 0:
+        # [ЛОГИКА РЕШЕНИЯ] Удаляем объект ТОЛЬКО если у него сработал триггер (building/power), 
+        # но при этом нет ни одного ценного тега (has_survival_tag)
+        if has_drop_trigger and not has_survival_tag:
             return
+
+        # Если после очистки от мусора тегов не осталось вообще (например, было только здание и оператор)
+        if not valid_tags or len(w.nodes) == 0:
+            return
+
+        is_polygon = w.is_closed() and not is_linear_highway
 
         pts = []
         valid_nds = []
@@ -139,14 +173,18 @@ class WayOptimizer(o.SimpleHandler):
         if len(pts) == 0:
             return
 
-        pts_array = np.array(pts, dtype=np.float64)
-        kept_indices = douglas_peucker_indices_fast(pts_array, self.epsilon_deg)
+        # ВРЕМЕННО ОТКЛЮЧЕНО: Децимация для сохранения точек пересечения графа
+        # pts_array = np.array(pts, dtype=np.float64)
+        # kept_indices = douglas_peucker_indices_fast(pts_array, self.epsilon_deg)
+        # simplified_nds = [valid_nds[i] for i in kept_indices]
+        # simplified_pts = [pts[i] for i in kept_indices]
+        
+        simplified_nds = valid_nds
+        simplified_pts = pts
 
-        simplified_nds = [valid_nds[i] for i in kept_indices]
-        simplified_pts = [pts[i] for i in kept_indices]
-
-        if not simplified_pts:
-            return
+        if is_polygon and simplified_nds[0] != simplified_nds[-1]:
+            simplified_nds.append(simplified_nds[0])
+            simplified_pts.append(simplified_pts[0])
 
         lons = [p[0] for p in simplified_pts]
         lats = [p[1] for p in simplified_pts]
@@ -154,13 +192,18 @@ class WayOptimizer(o.SimpleHandler):
         min_lat, max_lat = min(lats), max(lats)
 
         original_id = w.id
-        step = max(1, self.max_nodes - 1)
-        chunks = [simplified_nds[i:i + self.max_nodes] for i in range(0, len(simplified_nds), step)]
+        chunks = []
+        
+        if is_polygon:
+            chunks = [simplified_nds]
+        else:
+            step = max(1, self.max_nodes - 1)
+            chunks = [simplified_nds[i:i + self.max_nodes] for i in range(0, len(simplified_nds), step)]
 
         for index, chunk in enumerate(chunks):
             wid = original_id * 1000 + index if len(chunks) > 1 else original_id
 
-            xml_str = f'  <way id="{wid}" '
+            xml_str = f'  <way id="{wid}" version="1" visible="true" '
             xml_str += f'min_lon="{min_lon:.6f}" max_lon="{max_lon:.6f}" '
             xml_str += f'min_lat="{min_lat:.6f}" max_lat="{max_lat:.6f}">\n'
 
@@ -181,22 +224,24 @@ class WayOptimizer(o.SimpleHandler):
 
 
 def clean_element_metadata(elem):
-    """
-    Мутация XML-узла in-place.
-    """
-    for attr in ['version', 'timestamp', 'changeset', 'uid', 'user', 'visible']:
+    """ Очистка мусорных метаданных и тегов для Node и Relation """
+    for attr in ['timestamp', 'changeset', 'uid', 'user']:
         elem.attrib.pop(attr, None)
+        
+    if 'version' not in elem.attrib:
+        elem.set('version', '1')
+    if 'visible' not in elem.attrib:
+        elem.set('visible', 'true')
 
-    # [ОБНОВЛЕНО] Исключены 'barrier', 'int_name', 'old_name', 'alt_name'
+    # [ОБНОВЛЕНО] Списки синхронизированы с WayOptimizer
     drop_keys = {
         'wikidata', 'wikipedia', 'building', 'power', 
         'phone', 'website', 'url', 'opening_hours', 'email',
-        'maxspeed', 'lanes', 'oneway', 'surface', 'tracktype', 'smoothness',
-        'note', 'source', 'fixme'
+        'maxspeed', 'lanes', 'oneway', 
+        'note', 'source', 'fixme',
+        'operator', 'start_date'
     }
-    
-    # [ОБНОВЛЕНО] Исключен префикс 'name:'
-    drop_prefixes = ('addr:', 'contact:', 'payment:', 'source:')
+    drop_prefixes = ('addr:', 'contact:', 'payment:', 'source:', 'generator:', 'plant:')
 
     for tag in elem.findall('tag'):
         k = tag.get('k', '')
@@ -234,8 +279,8 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
                     out.write(ET.tostring(elem, encoding='utf-8') + b'\n')
 
                 elif elem.tag == 'node':
-                    if int(elem.get('id')) in used_node_ids:
-                        clean_element_metadata(elem)
+                    clean_element_metadata(elem)
+                    if int(elem.get('id')) in used_node_ids or len(elem.findall('tag')) > 0:
                         out.write(ET.tostring(elem, encoding='utf-8') + b'\n')
 
                 elif elem.tag == 'way':
@@ -252,16 +297,18 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
                         ways_written = True
                         
                     clean_element_metadata(elem)
-                    out.write(ET.tostring(elem, encoding='utf-8') + b'\n')
+                    if len(elem.findall('tag')) > 0:
+                        out.write(ET.tostring(elem, encoding='utf-8') + b'\n')
 
-                elem.clear()
-                root.clear()
+                if elem.tag in ('node', 'way', 'relation', 'bounds'):
+                    elem.clear()
+                    root.clear()
 
         out.write(b'</osm>\n')
 
     os.remove(temp_ways_name)
     print(f"[*] Optimization Summary:")
-    print(f"    - Nodes kept: {len(used_node_ids)}")
+    print(f"    - Nodes kept: {len(used_node_ids)} (plus standalone POIs)")
     print(f"    - Optimized Ways: {ways_count}")
     print("[+] Massive file processing complete! Performance and memory usage have reached optimal levels.")
 
