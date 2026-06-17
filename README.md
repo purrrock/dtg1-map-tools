@@ -137,13 +137,13 @@ The algorithm utilizes an Early Exit parsing interrupt: upon encountering a tag 
 
 ## Custom Route Injection (GPX)
 
-The compiler supports direct injection of navigation tracks on top of the base map.
-    
-1.  Place your route file named `route.gpx` in the root directory of the project.
-2.  Run the build. The script will automatically find the track and extract its name from the `<name>` tag. The extracted string is compiled into the `roads.db` attribute database, ensuring the track retains its original name on the watch.
-3.  The injected GPX track is converted into an object with the specific type `5111` (Motorway). This code is hardware-reserved in the watch's firmware for rendering a bold, contrasting orange line. To prevent the planned route from blending with actual motorways, all `motorway` objects from the source OSM file are forcibly downscaled to the yellow type `5112` (Trunk) via code substitution in `features.csv`.
+The compiler supports the direct batch injection of multiple navigation tracks on top of the base map.
 
-> **Note:** To disable injection and build a clean map, simply delete or rename the `route.gpx` file in the compiler's root directory before launching.
+1.  Place your `.gpx` route files into the `routes/` folder located in the root directory of the project.
+2.  Run the build. The script will automatically scan the directory and process all tracks sequentially.
+3.  The track's name is dynamically extracted from the `<name>` tag inside the GPX XML. If the tag is missing, the compiler adopts the file's name.
+4.  Each injected GPX track is assigned a unique system ID (`user_track_001`, `user_track_002`, etc.) to prevent structural collisions in the `roads.db` attribute database.
+5.  Tracks are converted into geometric objects with the specific type `5111` (Motorway). This code is hardware-reserved in the watch's firmware for rendering a bold, contrasting orange line. To prevent planned routes from blending with actual motorways, all motorway objects from the source OSM file are forcibly downscaled to the yellow type `5112` (Trunk) via code substitution in `features.csv`.
 
 ---
 

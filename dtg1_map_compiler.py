@@ -785,18 +785,54 @@ def main():
     parser = OSMParser("map.osm")
     roads_data, landuse_data, pois_data = parser.parse()
 
-    # --- GPX INJECTION BLOCK ---
-    gpx_file = "route.gpx"
-    if os.path.exists(gpx_file):
-        print(f"[>] Route file {gpx_file} detected. Performing injection...")
-        track_name, track_points = GPXParser.parse_track(gpx_file)
+    # =========================================================================
+    # GPX INJECTION BLOCK (Multiple Tracks Support)
+    # =========================================================================
+    routes_dir = "routes"
+    
+    # Проверяем наличие директории routes/
+    if os.path.exists(routes_dir) and os.path.isdir(routes_dir):
+        gpx_files = [f for f in os.listdir(routes_dir) if f.lower().endswith(".gpx")]
         
+        if gpx_files:
+            print(f"[>] Scanning '{routes_dir}/' directory. Found {len(gpx_files)} GPX track(s)...")
+            
+            # Итерируемся по каждому файлу и инжектируем в графы
+            for idx, file_name in enumerate(gpx_files, start=1):
+                gpx_path = os.path.join(routes_dir, file_name)
+                track_name, track_points = GPXParser.parse_track(gpx_path)
+                
+                # Fallback-механизм: если в XML нет тега <name>, берем имя файла
+                if not track_name or track_name == "Route":
+                    track_name = os.path.splitext(file_name)[0]
+                
+                if track_points and len(track_points) >= 2:
+                    # Генерируем уникальный ID, чтобы предотвратить коллизии в dBase
+                    unique_track_id = f"user_track_{idx:03d}"
+                    
+                    gpx_feature = MapFeature(
+                        osm_id=unique_track_id, 
+                        fclass="gpx_track", 
+                        code=5111,  # Hardware code: Orange line
+                        name=track_name, 
+                        points=track_points
+                    )
+                    gpx_feature.calculate_bbox()
+                    roads_data.append(gpx_feature)
+                    print(f"    [{idx}/{len(gpx_files)}] Track '{track_name}' successfully integrated.")
+        else:
+            print(f"[~] Directory '{routes_dir}/' is empty. No GPX tracks to inject.")
+            
+    # Legacy support (обратная совместимость для старого файла route.gpx в корне)
+    elif os.path.exists("route.gpx"):
+        print("[>] Legacy route file 'route.gpx' detected. Performing injection...")
+        track_name, track_points = GPXParser.parse_track("route.gpx")
         if track_points and len(track_points) >= 2:
             gpx_feature = MapFeature(osm_id="user_track_001", fclass="gpx_track", code=5111, name=track_name, points=track_points)
             gpx_feature.calculate_bbox()
             roads_data.append(gpx_feature)
             print(f"    Track '{track_name}' successfully integrated.")
-    
+            
     meta_all: List[MapFeature] = []
 
     # 1. Roads layer
