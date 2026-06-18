@@ -1,7 +1,10 @@
 # Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK / Amolde HD300 Pro
 **(ATS3085S Hardware Platform, Zephyr RTOS Software Platform)**
 
-🇷🇺 [Читать на русском](#)
+🇷🇺 [Читать на русском](README_ru.md)
+
+**How ​​to install your offline maps on a smartwatch**... This project offers a ready-made open-source solution.
+➡️ **[Download the ready-made compiler (.EXE) for Windows] (https://github.com/purrrock/dtg1-map-tools/releases/latest)**
 
 A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for DT NO.1 G1, VWAR, KKTICK and Amolde smartwatches (as well as other white-label devices based on the Actions Semiconductor ATS3085S hardware platform). If you are looking for how to install custom maps on a smartwatch or need better DT NO.1 G1 offline maps to sync via the WearPro app, this project provides a complete open-source solution.
 
