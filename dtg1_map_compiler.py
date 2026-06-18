@@ -54,6 +54,24 @@ _STOP_WORDS = (
     "ул.", "пер.", "пл.", "st.", "rd.", "ln.", "dr.", "sq.", "way", "pl."
 )
 
+def safe_encode(text: Any, max_len: int) -> bytes:
+    """
+    Secure truncator: Prevents incomplete UTF-8 encoding caused by forced slicing of 
+    multi-byte characters such as Chinese characters, thus avoiding crashes of the watch's font engine.
+    
+    Args:
+        text: Any value to encode
+        max_len: Maximum byte length after encoding
+        
+    Returns:
+        Safely truncated UTF-8 bytes that won't break multi-byte character sequences
+    """
+    b = str(text or "").encode('utf-8')
+    if len(b) <= max_len:
+        return b
+    # Slice and decode with 'ignore' to drop incomplete sequences, then re-encode
+    return b[:max_len].decode('utf-8', 'ignore').encode('utf-8')
+
 class LookupTables:
     """Dynamic style tables (LUT) and hardware early-exit registries"""
     HIGHWAY_CODES: Dict[str, int] = {}
@@ -202,12 +220,12 @@ class POIGeometryFactory:
             "cup": [(-R, R), (R, R), (R, -R + 2.5), (R - 2.5, -R), (-R + 2.5, -R), (-R, -R + 2.5), (-R, R)],
             "cross": [(-2, R), (2, R), (2, 2), (R, 2), (R, -2), (2, -2), (2, -R), (-2, -R), (-2, -2), (-R, -2), (-R, 2), (-2, 2), (-2, R)],
             "toilet": [(-R, R), (R, R), (0.5, 0), (R, -R), (-R, -R), (-0.5, 0), (-R, R)],
-            "transport": [(-R, R - 1), (R - 3, R - 1), (R, R - 3.0), (R, -R), (R - 1.0, -R), (R - 1.0, -R + 1.5), (R - 3.0, -R + 1.5), (R - 3.0, -R), (-R + 3.0, -R), (-R + 3.0, -R + 1.5), (-R + 1.0, -R + 1.5), (-R + 1.0, -R), (-R, -R), (-R, R - 1)],
+            "transport": [(-R, R - 1), (R - 3, R - 1), (R, R - 3.0), (R, -R), (R - 1.0, -R), (R - 1.0, -R + 1.5), (R - 3.0, -R + 1.5), (R - 3.0, -R), (-R + 3.0, -R), (-R + 3.0, -R + 1.5), (-R + 1[...]
             "shop": [(-R, R), (R, R), (R - 2.5, -R), (-R, -R), (-R, R)],
             "attraction": [(-R, R), (-2.5, R - 2.0), (0.0, R), (2.5, R - 2.0), (R, R), (R, -R), (-R, -R), (-R, R)],
-            "bicycle": [(-7.5, 1.5), (-5.25, 4.0), (-1.5, 4.0), (0.0, 1.5), (1.5, 4.0), (5.25, 4.0), (7.5, 1.5), (7.5, -1.5), (5.25, -4.0), (1.5, -4.0), (0.0, -1.5), (-1.5, -4.0), (-5.25, -4.0), (-7.5, -1.5), (-7.5, 1.5)],
+            "bicycle": [(-7.5, 1.5), (-5.25, 4.0), (-1.5, 4.0), (0.0, 1.5), (1.5, 4.0), (5.25, 4.0), (7.5, 1.5), (7.5, -1.5), (5.25, -4.0), (1.5, -4.0), (0.0, -1.5), (-1.5, -4.0), (-5.25, -4.0), [...]
             "shower": [(0.0, R), (5, 1.5), (-0.75, 1.5), (-0.75, -R), (-5, -R), (-5, 1.5), (0.0, R)],
-            "barrier": [(0.0, 1.5), (R - 1.5, R), (R, R - 1.5), (1.5, 0.0), (R, -R + 1.5), (R - 1.5, -R), (0.0, -1.5), (-R + 1.5, -R), (-R, -R + 1.5), (-1.5, 0.0), (-R, R - 1.5), (-R + 1.5, R), (0.0, 1.5)]
+            "barrier": [(0.0, 1.5), (R - 1.5, R), (R, R - 1.5), (1.5, 0.0), (R, -R + 1.5), (R - 1.5, -R), (0.0, -1.5), (-R + 1.5, -R), (-R, -R + 1.5), (-1.5, 0.0), (-R, R - 1.5), (-R + 1.5, R), ([...]
         }
         
         rel_coords = shapes.get(shape_type, shapes["rhombus"])
@@ -383,7 +401,7 @@ class OSMParser:
 
     @staticmethod
     def sanitize_osm_name(name: str) -> str:
-        """Normalize a string: trim spaces, move descriptors, truncate."""
+        """Normalize a string: trim spaces, move descriptors, truncate with safe UTF-8 encoding."""
         if not name: return ""
             
         name = name.strip()
@@ -401,10 +419,12 @@ class OSMParser:
         # Hardware escaping of spaces into '_'
         name = name.replace(" ", "_")
         
-        if len(name) > 22:
-            name = name[:22].strip('_') + ".."
+        # Use safe_encode to prevent broken UTF-8 from incomplete multi-byte characters
+        if len(name.encode('utf-8')) > 22:
+            name_bytes = safe_encode(name, 22)
+            name = name_bytes.decode('utf-8', 'ignore').rstrip('_') + ".."
             
-        return name.encode('utf-8', 'ignore').decode('utf-8')   
+        return name
 
     def _process_node(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
@@ -612,7 +632,8 @@ class MapCompiler:
 
     @staticmethod
     def _pad(text: Any, length: int) -> bytes:
-        return str(text).encode('utf-8')[:length].ljust(length, b'\x00')
+        """Pad text to fixed length using safe UTF-8 encoding."""
+        return safe_encode(text, length).ljust(length, b'\x00')
             
     @staticmethod
     def _desc(name: str, length: int) -> bytes:
@@ -738,7 +759,7 @@ class MapCompiler:
                     idx_buffer.extend(struct.pack("<II", 0, 0))
                 else:
                     cls._pack_clusters(lod_records, idx_buffer)
-       
+        
                 if lod_index == 2: lod2_size = len(idx_buffer) - start_len
             
             cls._write_yzl_container(filepath, idx_buffer, is_idx=True, lod2_size=lod2_size)
@@ -750,7 +771,7 @@ class MapCompiler:
         idx_hex = "595A4C10300000000000000400000010E5F9D2228804251B5F9E3EAB298C30E5535154010100000000000000000000005351540101000000000000000000000053515401010000000000000000000000"
         with open(f"{layer_prefix}.mlp", "wb") as f: f.write(bytearray.fromhex(mlp_hex))
         with open(f"{layer_prefix}.idx", "wb") as f: f.write(bytearray.fromhex(idx_hex))
- 
+  
     @staticmethod
     def create_map_name(name: str, meta_records: List[MapFeature], out_file: str = "map.name") -> None:
         if not meta_records: return
@@ -851,7 +872,7 @@ def main():
             poi.points = POIGeometryFactory.generate_polygon(shape_type, poi.points[0][0], poi.points[0][1])
             poi.calculate_bbox()
             landuse_data.append(poi)
- 
+  
         print(f"    Successfully baked {len(pois_data)} POIs.")
         pois_data.clear() 
 
