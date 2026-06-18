@@ -5,7 +5,7 @@
 Geometry helpers for DTG1 map compiler.
 
 Contains:
-- POIGeometryFactory: generator of low-polygon POI primitives (triangle, rhombus, cross, octagon, etc.)
+- POIGeometryFactory: generator of low-polygon POI primitives (triangle, rhombus, cross, etc.)
 - PERSPECTIVE_Y_MULTIPLIER constant (1.5) for ATS3085S compensation
 - is_clockwise(points): CW winding rule checker
 
@@ -51,18 +51,6 @@ class POIGeometryFactory:
             "shower": [(0.0, R), (5, 1.5), (-0.75, 1.5), (-0.75, -R), (-5, -R), (-5, 1.5), (0.0, R)],
             "barrier": [(0.0, 1.5), (R - 1.5, R), (R, R - 1.5), (1.5, 0.0), (R, -R + 1.5), (R - 1.5, -R), (0.0, -1.5), (-R + 1.5, -R), (-R, -R + 1.5), (-1.5, 0.0), (-R, R - 1.5), (-R + 1.5, R), (0.0, 1.5)],
         }
-
-        # Add octagon template (regular octagon approx. radius R)
-        if "octagon" not in shapes:
-            # Generate regular octagon vertices in meters
-            octagon = []
-            for i in range(8):
-                ang = math.pi * 2 * i / 8.0
-                x = R * math.cos(ang)
-                y = R * math.sin(ang)
-                octagon.append((x, y))
-            octagon.append(octagon[0])
-            shapes["octagon"] = octagon
 
         rel_coords = shapes.get(shape_type, shapes["rhombus"])
         points: List[Tuple[float, float]] = []
