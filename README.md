@@ -64,7 +64,7 @@ Read `/contours/README_contours.md`.
 1.  Ensure you have Python 3.8 or higher installed. No additional third-party dependencies are required (the project exclusively uses built-in modules: `os`, `struct`, `xml.etree`, `csv`, `math`, `argparse`).
 2.  Export the desired map area from [OpenStreetMap](https://www.openstreetmap.org/export) in XML format.
 3.  Rename the downloaded file to `map.osm` and place it in the compiler directory.
-4.  The minimum files required for the build are: `dtg1_map_compiler.py` and `features.csv`.
+4.  The minimum files required for the build are: `dtg1_map_compiler.py`, `dtg1_lookup.py`, `dtg1_geometry.py` and `features.csv`.
 5.  Run the compilation script. The compiled files (`roads.mlp`, `roads.idx`, `landuse.db`, `map.name`, etc.) will appear in the current directory.
 6.  Copy the generated files to the internal memory of the watch (usually into the `MAP/Map_Name` folder via USB connection).
 

@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Any, Optional
 from dtg1_geometry import POIGeometryFactory, is_clockwise
+from dtg1_lookup import LookupTables
 
 # ==============================================================================
 # 1. CONFIGURATION AND SYSTEM CONSTANTS
@@ -72,94 +73,6 @@ def safe_encode(text: Any, max_len: int) -> bytes:
         return b
     # Slice and decode with 'ignore' to drop incomplete sequences, then re-encode
     return b[:max_len].decode('utf-8', 'ignore').encode('utf-8')
-
-class LookupTables:
-    """Dynamic style tables (LUT) and hardware early-exit registries"""
-    HIGHWAY_CODES: Dict[str, int] = {}
-    POLYGON_CODES: Dict[str, int] = {}
-    POI_CODES: Dict[str, int] = {}
-    DISPLAY_SCALES: Dict[int, int] = {}
-    POI_SHAPES: Dict[str, str] = {}
-    
-    # Isolated blacklists (protection against namespace collisions)
-    DISABLED_ROADS: set = set()
-    DISABLED_LANDUSE: set = set()
-    DISABLED_POIS: set = set()
-    
-    # Tag routing registries
-    TAG_ROUTING: Dict[str, Dict[Tuple[str, str], str]] = {
-        'pois': {}, 'roads': {}, 'landuse': {}, 'water': {}
-    }
-
-    @classmethod
-    def load_from_csv(cls, filepath: str = "features.csv") -> None:
-        """Parse the external routing configuration file."""
-        if not os.path.exists(filepath):
-            print(f"[-] Error: Configuration file {filepath} not found.")
-            sys.exit(1)
-            
-        print(f"[>] Loading LUT style table from {filepath}...")
-        
-        try:
-            with open(filepath, mode='r', encoding='utf-8') as f:
-                reader = csv.reader(f, delimiter=';')
-                next(reader, None) # Skip header
-                
-                loaded_records = 0
-                for row in reader:
-                    if len(row) < 11:
-                        continue
-                        
-                    fclass = row[1].strip()
-                    layer = row[4].strip()
-                    osm_tag = row[5].strip()             
-                    
-                    # Software culling (early-exit parsing)
-                    enabled_flag = row[10].strip().lower()
-                    if enabled_flag in ('0', 'false', 'no', 'off', ''):
-                        if layer == 'roads': cls.DISABLED_ROADS.add(fclass)
-                        elif layer == 'pois': cls.DISABLED_POIS.add(fclass)
-                        else: cls.DISABLED_LANDUSE.add(fclass)
-                        continue 
-                    
-                    # Tag routing integration (key-value)
-                    if osm_tag and "=" in osm_tag:
-                        for tag_pair in osm_tag.split(','):
-                            if "=" in tag_pair:
-                                k, v = tag_pair.split("=", 1)
-                                cls.TAG_ROUTING[layer][(k.strip(), v.strip())] = fclass
-                    
-                    try:
-                        remap_code = int(row[7].strip())
-                        remap_lod = int(row[9].strip())
-                    except ValueError:
-                        continue
-
-                    # Layer distribution
-                    if layer == 'roads':
-                        cls.HIGHWAY_CODES[fclass] = remap_code
-                        cls.DISPLAY_SCALES[remap_code] = remap_lod
-                    elif layer in ('landuse', 'water'):
-                        cls.POLYGON_CODES[fclass] = remap_code
-                        cls.DISPLAY_SCALES[remap_code] = remap_lod
-                    elif layer == 'pois':
-                        cls.POI_CODES[fclass] = remap_code
-                        cls.DISPLAY_SCALES[remap_code] = remap_lod
-                        shape_val = row[11].strip().lower() if len(row) > 11 else 'rhombus'
-                        cls.POI_SHAPES[fclass] = shape_val if shape_val else 'rhombus'
-                        
-                    loaded_records += 1
-                    
-            print(f"    Successfully imported rules: {loaded_records}")
-            print(f"[i] LUT loaded. Roads: {len(cls.HIGHWAY_CODES)}, Polygons: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
-            
-            # Fail-safe LOD initialization for water
-            if HWConfig.WATER_CODE not in cls.DISPLAY_SCALES:
-                cls.DISPLAY_SCALES[HWConfig.WATER_CODE] = 1000
-                
-        except Exception as e:
-            print(f"[-] Fatal parsing error {filepath}: {e}")
-            sys.exit(1)
 
 # ==============================================================================
 # 2. DATA MODELS
