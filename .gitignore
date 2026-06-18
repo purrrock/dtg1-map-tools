@@ -13,7 +13,12 @@ map.name
 __pycache__/
 *.pyc
 
+# Сборка исполняемых файлов
+build/
+dist/
+*.spec
+*.exe
+
 # Игнорировать прочее
 *.geojson
-promt.txt
 *.dmp

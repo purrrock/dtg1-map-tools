@@ -1,0 +1,103 @@
+========================================================================
+ INSTRUCTIONS FOR CREATING AND INSTALLING CUSTOM MAPS FOR SMARTWATCHES
+   DT NO.1 G1 / VWAR / KKTICK (Actions ATS3085S Hardware Platform)
+                      Utility version: v1.4.0
+========================================================================
+
+This utility allows you to compile your own detailed offline map of any 
+region in the world based on open OpenStreetMap data and load it into the watch.
+You DO NOT need to install Python or enter commands — everything works in one click.
+
+------------------------------------------------------------------------
+PREPARATION (WHAT TO DOWNLOAD)
+------------------------------------------------------------------------
+
+1. Source map file (.osm):
+   * Go to the site https://www.openstreetmap.org
+   * Find the city or area you need.
+   * Click the "Export" button in the top menu.
+   * If the selected area is not too large, click the "Overpass API" link 
+     on the left. A file named "map.osm" will be downloaded.
+   * IMPORTANT: The watch memory is strictly limited. Do not attempt to 
+     download an area larger than 50x50 km.
+   * If the site says the area is too large, use the BBBike service 
+     (https://extract.bbbike.org), select the "OSM XML" format, and download 
+     the required area.
+   * Rename the downloaded file strictly to "map.osm".
+
+2. (Optional) Your planned route (.gpx):
+   * If you are going on a cycling trip or a hike, you can add your track.
+   * Take ready-made .gpx files from Strava, Garmin, or Komoot.
+   * Put them in the "/routes" folder. If you do not have this folder, create it.
+   * The utility will automatically bake these routes into the map as a thick 
+     orange line. At the same time, the built-in path recording on the watch 
+     will remain free — you will see both the plan and where you have already 
+     passed simultaneously (like on Garmin navigators).
+
+------------------------------------------------------------------------
+STEP-BY-STEP MAP COMPILATION PROCESS
+------------------------------------------------------------------------
+
+Step 1. Create a new empty folder on your computer (for example, "My Map").
+Step 2. Unpack the contents of the downloaded utility archive into this folder:
+       - dtg1_map_compiler.exe (main program file)
+       - features.csv (colors and styles configuration table)
+Step 3. Move the prepared files into the SAME folder:
+       - map.osm (mandatory)
+       - .gpx files into the routes subfolder (if a ready-made route is needed)
+Step 4. Run the dtg1_map_compiler.exe file by double-clicking it.
+A black console window will open. The program will start processing roads, 
+forests, water bodies, and points of interest. Compilation usually takes from 
+10 seconds to 3 minutes (depending on the building density and map size).
+When the program writes "Compilation finished successfully!", press any key 
+to close the window.
+
+------------------------------------------------------------------------
+WHAT WILL APPEAR IN THE FOLDER AFTER COMPILATION
+------------------------------------------------------------------------
+
+A ready-made cartographic package will be automatically generated in the folder:
+* roads.mlp, roads.idx, roads.db — the layer of all roads and routes.
+* landuse.mlp, landuse.idx, landuse.db — the layer of forests, parks, residential areas, and baked POIs.
+* water.mlp, water.idx, water.db — the layer of rivers, lakes, and seas.
+* poi.mlp, poi.idx, poi.db — the system points layer.
+* map.name — an important configuration file (the coordinates of the map center are hardcoded in it).
+
+------------------------------------------------------------------------
+HOW TO LOAD THE MAP INTO THE WATCH
+------------------------------------------------------------------------
+
+The watch connects to the computer as a USB flash drive:
+1. Connect the watch to the PC using the original cable.
+2. Open the removable disk that appears. Find the maps folder there (usually "MAP" or "maps").
+3. Delete the old map files (or move them to a safe place).
+4. Create a folder for your map in the Maps folder (name it, for example, after the area name).
+5. Copy ALL the newly generated files (roads.*, landuse.*, water.*, poi.*, map.name) 
+   into this folder on the watch.
+6. Safely eject the disk. Go to the offline maps menu on the watch.
+
+------------------------------------------------------------------------
+TROUBLESHOOTING AND FREQUENTLY ASKED QUESTIONS
+------------------------------------------------------------------------
+
+Q: The program window closes instantly after launch, nothing happens.
+A: Most likely, you forgot to rename the source map to "map.osm" or put it 
+   in a different folder. The program must be located in the same folder as "map.osm".
+
+Q: The watch started to reboot endlessly (bootloop) after enabling the map.
+A: You downloaded too large a region (an entire metropolis, a region, or an area 
+   with a lot of elevation/contour lines). The watch memory overflowed. Connect 
+   the watch to the PC, delete the custom files, and restore the factory backup. 
+   Compile a map of a smaller area.
+
+Q: Some objects (for example, a spring or a campsite) are displayed as pink rhombuses/shapes.
+A: This is not a bug, but a feature. The built-in WearPro firmware has a bug 
+   and cannot render standard point icons. The program automatically turns important 
+   points into bright geometric shapes on the landuse layer so that you can see 
+   them on the screen while on the go. Light blue triangles = water/springs, 
+   Brown squares = campsites/shelters.
+
+Q: I want to revert everything back to how it was.
+A: Delete the custom files from the watch and write back the files that you saved 
+   during the backup creation stage.
+========================================================================
