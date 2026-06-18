@@ -4,9 +4,7 @@
 🇷🇺 [Читать на русском](README_ru.md)
 
 If you are looking for **how to install custom maps on a smartwatch** or need better **DT NO.1 G1 offline maps** to sync via the **WearPro** app, this project provides a complete open-source solution. 
-➡️ **[Download the ready-made compiler (.EXE) for Windows]**
-
-[![GitHub release](https://img.shields.shields.io/github/v/release/purrrock/dtg1-map-tools?color=green)](https://github.com/purrrock/dtg1-map-tools/releases/latest)
+➡️ **[Download the ready-made compiler (.EXE) for Windows]** [![GitHub release](https://img.shields.io/github/v/release/purrrock/dtg1-map-tools?color=green)](https://github.com/purrrock/dtg1-map-tools/releases/latest)
 
 A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for DT NO.1 G1, VWAR, KKTICK and Amolde smartwatches (as well as other white-label devices based on the Actions Semiconductor ATS3085S hardware platform). If you are looking for how to install custom maps on a smartwatch or need better DT NO.1 G1 offline maps to sync via the WearPro app, this project provides a complete open-source solution.
 The toolset allows building your own highly detailed maps from open sources (e.g., OpenStreetMap). These custom maps are natively hardware-supported and perfectly rendered by the watch's built-in graphics engine. 
