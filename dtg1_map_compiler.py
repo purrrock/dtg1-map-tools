@@ -20,6 +20,7 @@ import argparse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Any, Optional
+from dtg1_geometry import POIGeometryFactory, is_clockwise
 
 # ==============================================================================
 # 1. CONFIGURATION AND SYSTEM CONSTANTS
@@ -199,47 +200,8 @@ class MapFeature:
         )
 
 # ==============================================================================
-# 3. GEOMETRY & MATH
+# 3. GEOMETRY & MATH вынесен в отдельный файл dtg1_geometry.py
 # ==============================================================================
-
-class POIGeometryFactory:
-    """Generator of low-polygon primitives for the POI layer."""
-    EARTH_RADIUS = 6378137.0
-    R = 4.1
-    PERSPECTIVE_Y_MULTIPLIER = 1.5 # Compensation for ATS3085S display distortion
-
-    @classmethod
-    def generate_polygon(cls, shape_type: str, center_lon: float, center_lat: float) -> List[Tuple[float, float]]:
-        """Convert metric shapes into spherical polygons (WGS 84)."""
-        R = cls.R
-        
-        shapes = {
-            "rhombus": [(0, R * 1.4), (R, 0), (0, -R * 1.4), (-R, 0), (0, R * 1.4)],
-            "triangle": [(0, R), (R, -R), (-R, -R), (0, R)],
-            "house": [(0, R + 1), (R, R - 3), (R, -R), (-R, -R), (-R, R - 3), (0, R + 1)],
-            "cup": [(-R, R), (R, R), (R, -R + 2.5), (R - 2.5, -R), (-R + 2.5, -R), (-R, -R + 2.5), (-R, R)],
-            "cross": [(-2, R), (2, R), (2, 2), (R, 2), (R, -2), (2, -2), (2, -R), (-2, -R), (-2, -2), (-R, -2), (-R, 2), (-2, 2), (-2, R)],
-            "toilet": [(-R, R), (R, R), (0.5, 0), (R, -R), (-R, -R), (-0.5, 0), (-R, R)],
-            "transport": [(-R, R - 1), (R - 3, R - 1), (R, R - 3.0), (R, -R), (R - 1.0, -R), (R - 1.0, -R + 1.5), (R - 3.0, -R + 1.5), (R - 3.0, -R), (-R + 3.0, -R), (-R + 3.0, -R + 1.5), (-R + 1.0, -R + 1.5), (-R + 1.0, -R), (-R, -R), (-R, R - 1)],
-            "shop": [(-R, R), (R, R), (R - 2.5, -R), (-R, -R), (-R, R)],
-            "attraction": [(-R, R), (-2.5, R - 2.0), (0.0, R), (2.5, R - 2.0), (R, R), (R, -R), (-R, -R), (-R, R)],
-            "bicycle": [(-7.5, 1.5), (-5.25, 4.0), (-1.5, 4.0), (0.0, 1.5), (1.5, 4.0), (5.25, 4.0), (7.5, 1.5), (7.5, -1.5), (5.25, -4.0), (1.5, -4.0), (0.0, -1.5), (-1.5, -4.0), (-5.25, -4.0), (-7.5, -1.5), (-7.5, 1.5)],
-            "shower": [(0.0, R), (5, 1.5), (-0.75, 1.5), (-0.75, -R), (-5, -R), (-5, 1.5), (0.0, R)],
-            "barrier": [(0.0, 1.5), (R - 1.5, R), (R, R - 1.5), (1.5, 0.0), (R, -R + 1.5), (R - 1.5, -R), (0.0, -1.5), (-R + 1.5, -R), (-R, -R + 1.5), (-1.5, 0.0), (-R, R - 1.5), (-R + 1.5, R), (0.0, 1.5)]
-        }
-        
-        rel_coords = shapes.get(shape_type, shapes["rhombus"])
-        points = []
-        lat_rad = math.radians(center_lat)
-        cos_lat = math.cos(lat_rad)
-        
-        for x_offset, y_offset in rel_coords:
-            y_offset_stretched = y_offset * cls.PERSPECTIVE_Y_MULTIPLIER
-            d_lat = (y_offset_stretched / cls.EARTH_RADIUS) * (180.0 / math.pi)
-            d_lon = (x_offset / (cls.EARTH_RADIUS * cos_lat)) * (180.0 / math.pi)
-            points.append((center_lon + d_lon, center_lat + d_lat))
-            
-        return points
 
 # ==============================================================================
 # 4. PARSERS
@@ -289,10 +251,8 @@ class OSMParser:
 
     @staticmethod
     def _is_clockwise(points: List[Tuple[float, float]]) -> bool:
-        """Mathematical ring orientation check (negative area == CW)."""
-        sum_area = sum((points[i][0] * points[i+1][1] - points[i+1][0] * points[i][1]) 
-                       for i in range(len(points) - 1))
-        return sum_area < 0
+        """Delegate to shared CW check (negative oriented area => CW)."""
+        return is_clockwise(points)
         
     def _analyze_road_surface(self, tags: Dict[str, str]) -> Optional[str]:
         """
