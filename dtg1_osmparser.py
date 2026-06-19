@@ -189,12 +189,20 @@ class OSMParser:
                 
         name = name.replace(" ", "_")
         
-        if len(name.encode('utf-8')) > 22:
-            name_bytes = safe_encode(name, 22)
-            name = name_bytes.decode('utf-8', 'ignore').rstrip('_') + ".."
+        # 1. Ограничение для UI (символы). 
+        # Графический движок часов корректно вмещает ~22 символа на экране.
+        if len(name) > 22:
+            name = name[:20].rstrip('_') + ".."
+            
+        # 2. Ограничение для БД .db (байты). 
+        # Спецификация dBase III строго выделяет 100 байт под поле name.
+        encoded_name = name.encode('utf-8')
+        if len(encoded_name) > 100:
+            name_bytes = safe_encode(name, 100)
+            name = name_bytes.decode('utf-8', 'ignore').rstrip('_')
             
         return name
-
+        
     def _process_node(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
         if not tags: return
