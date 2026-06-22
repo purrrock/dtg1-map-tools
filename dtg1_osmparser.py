@@ -264,6 +264,46 @@ class OSMParser:
         name = OSMParser.sanitize_osm_name(raw_name.strip())
         osm_id = elem.attrib['id']
 
+        # === ЗАЩИТА: Runtime-экстракция POI из замкнутых полигонов ===
+        is_closed = len(points) >= 4 and points[0] == points[-1]
+        
+        if is_closed and any(k in tags for k in ('building', 'amenity', 'shop', 'leisure', 'tourism', 'historic')):
+            poi_fclass = None
+            
+            # 1. Поиск по явным парам ключ-значение в LUT
+            for k, v in tags.items():
+                if (k, v) in LookupTables.TAG_ROUTING.get('pois', {}):
+                    poi_fclass = LookupTables.TAG_ROUTING['pois'][(k, v)]
+                    break
+            
+            # 2. Fallback-поиск по одиночным значениям
+            if not poi_fclass:
+                for val in tags.values():
+                    if val in LookupTables.POI_CODES:
+                        poi_fclass = val
+                        break
+            
+            # 3. Инъекция центроида
+            if poi_fclass and poi_fclass not in LookupTables.DISABLED_POIS:
+                poi_code = LookupTables.POI_CODES.get(poi_fclass)
+                if poi_code:
+                    # Вычисляем математический центроид (отбрасывая дублирующую замыкающую вершину)
+                    unique_points = points[:-1]
+                    avg_lon = sum(p[0] for p in unique_points) / len(unique_points)
+                    avg_lat = sum(p[1] for p in unique_points) / len(unique_points)
+                    
+                    poi_name = name if name else str(poi_fclass)
+                    poi_feature = MapFeature(
+                        osm_id=f"v{osm_id}", 
+                        fclass=poi_fclass, 
+                        code=poi_code, 
+                        name=poi_name, 
+                        points=[(avg_lon, avg_lat)]
+                    )
+                    poi_feature.calculate_bbox()
+                    self.pois.append(poi_feature)
+        # =============================================================
+
         target_layer = fclass = None
         
         for k, v in tags.items():
