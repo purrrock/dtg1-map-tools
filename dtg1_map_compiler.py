@@ -35,7 +35,7 @@ def get_base_directory() -> str:
 def main():
     cli_parser = argparse.ArgumentParser(description="DT G1 Map Compiler (Platform ATS3085S)")
     cli_parser.add_argument(
-        "-p", "--poi-mode", choices=["native", "landuse", "none"], default="none",
+        "-p", "--poi-mode", choices=["native", "landuse", "none"], default="landuse",
         help="POI mode: 'native' (pois.idx/db), 'landuse' (polygon baking), 'none' (ignore)"
     )
     args = cli_parser.parse_args()
