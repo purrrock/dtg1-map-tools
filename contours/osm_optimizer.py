@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-OSM Optimizer (V20.7 Ultimate Edition)
+OSM Optimizer (V29.1 True Universal for Windows)
 ===========================================================
-- 🏙️ Building Unlocked: Render building, boundary, aeroway, man_made.
-- 🎯 POI Centroid Extraction: Automatically calculate the center of buildings with POI attributes, converting them into single nodes to extremely compress file size.
-- 🧹 Useless Tag Cleansing: Strip out heavy metadata like wikidata, addr:*, source:* that don't affect visual rendering.
-- 🛡️ Local Variable Binding: Restore local aliases to prevent attribute lookup overhead in loops.
-- 🛡️ Disk Bomb Defused: Use sparse_file_array to prevent global IDs from taking 100GB disk space.
-- ⚡ GC Lock: Disable Garbage Collector during Pass 3 to prevent CPU cycles from being stolen by background scanning.
+- 🌍 True Universal Engine: 嚴格尊崇 OSM 標準，絕對優先保留本地原名 (`name`)，無任何語系硬編碼。
+- 🪟 Windows PowerShell 友善: 拔除會因 Windows 語系字串而崩潰的偵測邏輯。
+- 🔧 MAP_LANG Override: 若需強制翻譯，支援 PowerShell 環境變數 ($env:MAP_LANG="zh_TW")。
+- 🛠️ Multipolygon Rescue: 複合建築(車站/醫院)防護。
+- 📉 Extreme Compression: 極致壓縮，刪除無名建築與微型多邊形。
+- ⚡ C-Level DP & Formatting: Numba JIT 極限硬體加速。
 """
 
 import osmium as o
@@ -19,6 +19,7 @@ import tempfile
 import shutil
 import time
 import gc
+import functools
 
 try:
     import numpy as np
@@ -28,12 +29,52 @@ except ImportError:
     HAS_JIT = False
 
 # ==========================================
-# Constants Area
+# 🌍 True Universal Language Engine
+# ==========================================
+def get_universal_lang_priorities():
+    priorities = {}
+    idx = 0
+    
+    # 支援透過環境變數強制覆寫地圖語言 (PowerShell: $env:MAP_LANG="zh_TW")
+    env_lang = os.environ.get('MAP_LANG')
+    
+    if env_lang:
+        lang = env_lang.split('_')[0].lower()
+        region = env_lang.split('_')[1].upper() if '_' in env_lang else ''
+        
+        if lang == 'zh':
+            if region in ('TW', 'HK', 'MO'):
+                for k in ('name:zh-Hant', 'name:zh-TW', 'name:zh_tw', 'name:zh_TW', 'name:zh'):
+                    priorities[k] = idx; idx += 1
+            else:
+                for k in ('name:zh-Hans', 'name:zh-CN', 'name:zh_cn', 'name:zh_CN', 'name:zh'):
+                    priorities[k] = idx; idx += 1
+        else:
+            priorities[f'name:{lang}'] = idx; idx += 1
+            if region: priorities[f'name:{lang}_{region}'] = idx; idx += 1
+            
+    # 🌐 預設 OSM 標準：絕對優先使用當地原名 (如: 西安路)
+    priorities['name'] = idx; idx += 1
+    
+    # 全球通用備用語言
+    priorities['name:en'] = idx; idx += 1
+    
+    return priorities
+
+NAME_PRIORITIES = get_universal_lang_priorities()
+
+# ==========================================
+# Constants & Tag Configurations
 # ==========================================
 WATCH_ALLOWED_TAGS = frozenset({
     'highway', 'natural', 'waterway', 'landuse', 'leisure', 
     'amenity', 'tourism', 'place', 'historic', 'railway', 
-    'tracktype', 'building', 'boundary', 'aeroway', 'man_made', 'shop'
+    'tracktype', 'shop', 'man_made'
+})
+
+IGNORE_BUILDING_VALUES = frozenset({
+    'yes', 'residential', 'house', 'apartments', 'garage', 'garages', 
+    'hut', 'shed', 'roof', 'terrace', 'greenhouse', 'cabin', 'detached'
 })
 
 POI_TRIGGER_KEYS = frozenset({
@@ -45,20 +86,19 @@ VALID_POI_VALUES = frozenset({
     'toilets', 'drinking_water', 'hospital', 'police', 'shelter',        
     'convenience', 'supermarket', 'fuel', 'camp_site', 'viewpoint', 
     'information', 'alpine_hut', 'guest_house', 'parking', 'station', 
-    'bus_stop', 'guidepost', 'milestone', 'ruins', 'monument', 'city', 'town', 'village', 'hamlet'
+    'bus_stop', 'guidepost', 'milestone', 'ruins', 'monument', 'city', 
+    'town', 'village', 'hamlet', 'survey_point'
 })
 
-ZH_NAME_KEYS = frozenset({'name:zh-Hant', 'name:zh_tw', 'name:zh', 'name:zh_TW'})
-
-# Added: Tag Cleansing List
 DROP_TAG_KEYS = frozenset({
     'wikidata', 'wikipedia', 'phone', 'website', 'url', 'opening_hours', 
-    'email', 'fax', 'note', 'source', 'fixme', 'operator', 'start_date', 'created_by'
+    'email', 'fax', 'note', 'source', 'fixme', 'operator', 'start_date', 'created_by',
+    'building:levels', 'height', 'roof:shape', 'description', 'brand'
 })
-DROP_TAG_PREFIXES = ('addr:', 'contact:', 'payment:', 'source:', 'generator:', 'name:en')
 
-XML_TAG_LINE_CACHE = {}
+DROP_TAG_PREFIXES = ('addr:', 'contact:', 'payment:', 'source:', 'generator:', 'building:ruin')
 
+@functools.lru_cache(maxsize=8192)
 def escape_xml_bytes(s: str) -> bytes:
     if not s: return b""
     if '&' in s or '<' in s or '>' in s or '"' in s or "'" in s:
@@ -69,6 +109,28 @@ def format_time(seconds):
     return f"{int(seconds // 60)}m {seconds % 60:.2f}s"
 
 if HAS_JIT:
+    @njit(fastmath=True, cache=True, nogil=True, boundscheck=False)
+    def fast_centroid(pts):
+        n = len(pts)
+        cx, cy = 0.0, 0.0
+        for i in range(n):
+            cx += pts[i, 0]
+            cy += pts[i, 1]
+        return cx / n, cy / n
+        
+    @njit(fastmath=True, cache=True, nogil=True, boundscheck=False)
+    def is_too_small(pts, threshold):
+        if len(pts) < 3: return True
+        min_x, min_y = pts[0, 0], pts[0, 1]
+        max_x, max_y = pts[0, 0], pts[0, 1]
+        for i in range(1, len(pts)):
+            x, y = pts[i, 0], pts[i, 1]
+            if x < min_x: min_x = x
+            elif x > max_x: max_x = x
+            if y < min_y: min_y = y
+            elif y > max_y: max_y = y
+        return (max_x - min_x < threshold) and (max_y - min_y < threshold)
+
     @njit(fastmath=True, cache=True, nogil=True, boundscheck=False)
     def douglas_peucker_fast(pts, epsilon, stack_start, stack_end, keep_indices):
         n = len(pts)
@@ -125,8 +187,8 @@ def douglas_peucker_fallback(pts, epsilon):
     while stack:
         start, end = stack.pop()
         if end - start <= 1: continue
-        p1x, p1y = pts[start], pts[end]
-        p2x, p2y = pts[end], pts[end]
+        p1x, p1y = pts[start] 
+        p2x, p2y = pts[end]
         dx, dy = p2x - p1x, p2y - p1y
         l2 = dx*dx + dy*dy
         dmax_sq, index = 0.0, start
@@ -151,7 +213,11 @@ class RelationScanner(o.SimpleHandler):
         self.relation_ways = set()
 
     def relation(self, r):
-        if r.tags.get('type') == 'multipolygon': 
+        tags = r.tags
+        if tags and tags.get('type') == 'multipolygon':
+            b_val = tags.get('building')
+            if b_val and b_val in IGNORE_BUILDING_VALUES:
+                return 
             add_way = self.relation_ways.add
             for m in r.members:
                 if m.type == 'w': add_way(m.ref)
@@ -161,14 +227,13 @@ class WayOptimizer(o.SimpleHandler):
     def __init__(self, temp_ways_file, temp_nodes_file, max_nodes_per_way, epsilon_deg, relation_ways):
         super().__init__()
         self.tmp_f = open(temp_ways_file, 'wb', buffering=16*1024*1024)
-        self.tmp_nodes_f = open(temp_nodes_file, 'wb', buffering=16*1024*1024) # Centroid temp file
+        self.tmp_nodes_f = open(temp_nodes_file, 'wb', buffering=16*1024*1024)
         self.max_nodes = max_nodes_per_way
         self.base_epsilon = epsilon_deg
         self.relation_ways = relation_ways 
         self.used_node_ids = set()
         self.split_id_counter = -1000000000 
-        self.ignore_highway_types = frozenset({'corridor', 'elevator', 'proposed', 'construction', 'abandoned'})
-        self.polygon_safe_limit = 500  
+        self.ignore_highway_types = frozenset({'corridor', 'elevator', 'proposed', 'construction', 'abandoned', 'raceway'})
         self.extracted_pois = 0
         
         self.io_buffer = bytearray()
@@ -179,7 +244,8 @@ class WayOptimizer(o.SimpleHandler):
             self.max_pts_capacity = 40000
             self.s_pts = np.empty((self.max_pts_capacity, 2), dtype=np.float64)
             self.s_ref = np.empty(self.max_pts_capacity, dtype=np.int64)
-            self.s_stack_start, self.s_stack_end = np.empty(self.max_pts_capacity, dtype=np.int64), np.empty(self.max_pts_capacity, dtype=np.int64)
+            self.s_stack_start = np.empty(self.max_pts_capacity, dtype=np.int64)
+            self.s_stack_end = np.empty(self.max_pts_capacity, dtype=np.int64)
             self.s_keep = np.empty(self.max_pts_capacity, dtype=np.bool_)
 
     def way(self, w):
@@ -187,44 +253,64 @@ class WayOptimizer(o.SimpleHandler):
         if not len(tags): return 
         
         parsed_tag_lines = []
-        poi_tag_lines = [] # Tags for centroid
+        poi_tag_lines = []
         app_tag, app_poi = parsed_tag_lines.append, poi_tag_lines.append
         
-        zh_name = None
+        best_name = None
+        best_name_prio = 999
         has_allowed_tag = is_area = is_linear = has_poi = False
+        
+        loc_drop_keys = DROP_TAG_KEYS
+        loc_drop_prefixes = DROP_TAG_PREFIXES
+        loc_ignore_hwy = self.ignore_highway_types
+        loc_poi_triggers = POI_TRIGGER_KEYS
+        loc_watch_tags = WATCH_ALLOWED_TAGS
+        loc_name_prios = NAME_PRIORITIES
+        loc_escape = escape_xml_bytes
+        loc_ignore_bldgs = IGNORE_BUILDING_VALUES
         
         for tag in tags:
             k, v = tag.k, tag.v
-            
-            # 🧹 Tag Cleansing: Skip useless data
-            if k in DROP_TAG_KEYS or k.startswith(DROP_TAG_PREFIXES): continue
+            if k in loc_drop_keys or k.startswith(loc_drop_prefixes): continue
             
             if k == 'highway':
-                if v in self.ignore_highway_types: return
+                if v in loc_ignore_hwy: return
                 is_linear = True
             elif k == 'waterway':
                 is_linear = True
+                
+            if k in {'area', 'landcover', 'surface'}: 
+                is_area = True
+                
+            if k == 'building':
+                is_area = True
+                if v not in loc_ignore_bldgs:
+                    has_allowed_tag = True
+                    app_tag(b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v)))
+                continue
             
-            if k in POI_TRIGGER_KEYS: has_poi = True
-            if k in {'area', 'landcover', 'surface', 'building'}: is_area = True
-                
-            if k in WATCH_ALLOWED_TAGS or has_poi:
-                has_allowed_tag = True
-                line = b'  <tag k="%b" v="%b"/>\n' % (escape_xml_bytes(k), escape_xml_bytes(v))
-                
-                # Transfer POI tags to centroid
-                if has_poi and k != 'building': app_poi(line) 
-                # Keep only tags like building=yes for the polygon body
-                else: app_tag(line) 
-                
-            elif k in ZH_NAME_KEYS:
-                if not zh_name or k == 'name:zh-Hant': zh_name = v
-            elif k == 'name' and not zh_name: zh_name = v
+            is_poi_key = k in loc_poi_triggers
+            is_watch_key = k in loc_watch_tags
+            
+            if k in loc_name_prios:
+                prio = loc_name_prios[k]
+                if prio < best_name_prio:
+                    best_name_prio, best_name = prio, v
+            
+            elif is_poi_key or is_watch_key:
+                esc_k, esc_v = loc_escape(k), loc_escape(v)
+                escaped_line = b'  <tag k="%b" v="%b"/>\n' % (esc_k, esc_v)
+                if is_poi_key:
+                    has_poi = True
+                    app_poi(escaped_line)
+                if is_watch_key:
+                    has_allowed_tag = True
+                    app_tag(escaped_line)
 
-        name_line = b'  <tag k="name" v="%b"/>\n' % escape_xml_bytes(zh_name) if zh_name else b""
-        if name_line:
-            app_poi(name_line)
-            app_tag(name_line)
+        if best_name:
+            name_line = b'  <tag k="name" v="%b"/>\n' % loc_escape(best_name)
+            if has_poi: app_poi(name_line)
+            else: app_tag(name_line)
 
         is_in_relation = w.id in self.relation_ways
         is_polygon = w.is_closed() and (has_allowed_tag or is_area)
@@ -233,12 +319,14 @@ class WayOptimizer(o.SimpleHandler):
         num_nodes = len(w.nodes)
         if num_nodes < 2: return
 
-        # Read coordinate array
         if HAS_JIT:
             if num_nodes > self.max_pts_capacity:
                 self.max_pts_capacity = int(num_nodes * 1.5)
                 self.s_pts = np.empty((self.max_pts_capacity, 2), dtype=np.float64)
                 self.s_ref = np.empty(self.max_pts_capacity, dtype=np.int64)
+                self.s_stack_start = np.empty(self.max_pts_capacity, dtype=np.int64)
+                self.s_stack_end = np.empty(self.max_pts_capacity, dtype=np.int64)
+                self.s_keep = np.empty(self.max_pts_capacity, dtype=np.bool_)
 
             idx = 0
             for n in w.nodes:
@@ -258,17 +346,21 @@ class WayOptimizer(o.SimpleHandler):
                     valid_nds.append(n.ref)
             if len(pts) < 2: return
             
-        # 🎯 Core Feature: POI Centroid Extraction
         if is_polygon and has_poi:
             if HAS_JIT:
-                center_lon, center_lat = np.mean(pts_array[:, 0]), np.mean(pts_array[:, 1])
+                center_lon, center_lat = fast_centroid(pts_array)
             else:
-                center_lon = sum(p[0] for p in pts) / len(pts)
-                center_lat = sum(p[1] for p in pts) / len(pts)
+                sx = sy = 0.0
+                for p in pts:
+                    sx += p[0]; sy += p[1]
+                n = len(pts)
+                center_lon, center_lat = sx / n, sy / n
                 
-            node_id = 20000000000 + w.id # Add 20 billion to avoid ID conflicts
-            centroid_xml = [f'<node id="{node_id}" lat="{center_lat:.5f}" lon="{center_lon:.5f}">\n'.encode('ascii')]
+            node_id = 20000000000 + w.id 
+            centroid_xml = [b'<node id="%d" visible="true" version="1" lat="%.5f" lon="%.5f">\n' % (node_id, center_lat, center_lon)]
+            
             if poi_tag_lines: centroid_xml.extend(poi_tag_lines)
+            if best_name: centroid_xml.append(name_line)
             centroid_xml.append(b'</node>\n')
             self.nodes_io_buffer.extend(b"".join(centroid_xml))
             self.extracted_pois += 1
@@ -276,12 +368,17 @@ class WayOptimizer(o.SimpleHandler):
             if len(self.nodes_io_buffer) > self.FLUSH_LIMIT:
                 self.tmp_nodes_f.write(self.nodes_io_buffer)
                 self.nodes_io_buffer.clear()
-            
-            # If this polygon only has POI tags and no building tag, discard it after centroid extraction
-            if 'building' not in (t.k for t in tags) and not is_in_relation:
-                return
 
-        # Simplify and chunk writing
+        if is_polygon and not is_in_relation and not parsed_tag_lines:
+            return 
+            
+        if is_polygon and not is_in_relation:
+            if HAS_JIT:
+                if is_too_small(pts_array, 0.00002): return
+            else:
+                lons, lats = [p[0] for p in pts], [p[1] for p in pts]
+                if (max(lats) - min(lats) < 0.00002) and (max(lons) - min(lons) < 0.00002): return
+
         current_epsilon = self.base_epsilon * 3.0 if (is_polygon or is_in_relation) else (self.base_epsilon * 0.9 if is_linear else self.base_epsilon)
         
         if HAS_JIT:
@@ -289,24 +386,15 @@ class WayOptimizer(o.SimpleHandler):
             kept_indices = np.nonzero(keep_arr)[0]
         else:
             kept_indices = douglas_peucker_fallback(pts, current_epsilon)
-        
-        if is_polygon or is_in_relation:
-            while len(kept_indices) > self.polygon_safe_limit and current_epsilon < 0.005:
-                current_epsilon *= 2.0
-                kept_indices = np.nonzero(douglas_peucker_fast(pts_array, current_epsilon, self.s_stack_start, self.s_stack_end, self.s_keep))[0] if HAS_JIT else douglas_peucker_fallback(pts, current_epsilon)
-            
-            if len(kept_indices) > self.polygon_safe_limit:
-                kept_indices = kept_indices[:self.polygon_safe_limit]
-                kept_indices[-1] = len(pts_array if HAS_JIT else pts) - 1
-        
+
         kept_refs = valid_nds[kept_indices].tolist() if HAS_JIT else [valid_nds[i] for i in kept_indices]
         chunks = [kept_refs] if (is_polygon or is_in_relation) else [kept_refs[i:i + self.max_nodes] for i in range(0, len(kept_refs), max(1, self.max_nodes - 1))]
         
         tag_blob = b"".join(parsed_tag_lines) if parsed_tag_lines else b""
+        if not tag_blob and not is_in_relation: return
         
-        # 🚀 Local Variable Binding
         _extend = self.io_buffer.extend
-        _add_node = self.used_node_ids.add
+        _update_nodes = self.used_node_ids.update  
         
         for chunk in chunks:
             if len(chunk) < 2: continue
@@ -314,13 +402,13 @@ class WayOptimizer(o.SimpleHandler):
             wid = self.split_id_counter if len(chunks) > 1 else w.id
             if len(chunks) > 1: self.split_id_counter -= 1
             
-            # 🔥 Remove f-string.encode, completely use C-level Bytes formatting
-            chunk_parts = [b'<way id="%d">\n' % wid]
+            chunk_parts = [b'<way id="%d" visible="true" version="1">\n' % wid]
             _app = chunk_parts.append
             
             for nd_ref in chunk:
                 _app(b'  <nd ref="%d"/>\n' % nd_ref)
-                _add_node(nd_ref) 
+                
+            _update_nodes(chunk)
                 
             if tag_blob: _app(tag_blob)
             _app(b'</way>\n')
@@ -341,7 +429,6 @@ class WayOptimizer(o.SimpleHandler):
 class FinalBuilder(o.SimpleHandler):
     def __init__(self, output_file, temp_ways_file, temp_nodes_file, used_node_ids):
         super().__init__()
-        # 🚀 Increase Buffer size to reduce disk I/O (Syscall)
         self.f = open(output_file, 'wb', buffering=32*1024*1024)
         self.temp_ways_file = temp_ways_file
         self.temp_nodes_file = temp_nodes_file
@@ -353,17 +440,8 @@ class FinalBuilder(o.SimpleHandler):
         self.io_buffer = bytearray()
         self.FLUSH_LIMIT = 32 * 1024 * 1024
         
-        # 🚀 Local Variable Binding: Avoid repeated self attribute lookups in loops
         self._extend = self.io_buffer.extend
-        self._drop_keys = DROP_TAG_KEYS
-        self._drop_prefixes = DROP_TAG_PREFIXES
-        self._valid_pois = VALID_POI_VALUES
-        self._poi_triggers = POI_TRIGGER_KEYS
-        self._zh_keys = ZH_NAME_KEYS
-        self._watch_tags = WATCH_ALLOWED_TAGS
-        self._escape = escape_xml_bytes
-        
-        self.f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6">\n')
+        self.f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="OSM_Optimizer_V29">\n')
         self.bounds_pos = self.f.tell()
         self.f.write(b' ' * 120 + b'\n')
 
@@ -372,32 +450,41 @@ class FinalBuilder(o.SimpleHandler):
         is_in_way = n_id in self.used_node_ids
         tags = n.tags
         
-        # 🔥 Nano-second early exit: Not in a kept way and has no tags? Drop it! (Skips 80% of processing)
         if not is_in_way and not tags: 
             return
 
         is_valid_poi = False
         best_name = None
+        best_name_prio = 999
         parsed_tag_lines = []
         _app = parsed_tag_lines.append
+        
+        loc_drop_keys = DROP_TAG_KEYS
+        loc_drop_prefixes = DROP_TAG_PREFIXES
+        loc_valid_pois = VALID_POI_VALUES
+        loc_poi_triggers = POI_TRIGGER_KEYS
+        loc_name_prios = NAME_PRIORITIES
+        loc_watch_tags = WATCH_ALLOWED_TAGS
+        loc_escape = escape_xml_bytes
         
         if tags:
             for tag in tags:
                 k, v = tag.k, tag.v
-                if k in self._drop_keys or k.startswith(self._drop_prefixes): continue
+                if k in loc_drop_keys or k.startswith(loc_drop_prefixes): continue
                 
-                if not is_valid_poi and (v in self._valid_pois or k in self._poi_triggers):
+                if not is_valid_poi and (v in loc_valid_pois or k in loc_poi_triggers):
                     is_valid_poi = True
                 
-                if k in self._zh_keys:
-                    if not best_name or k == 'name:zh-Hant': best_name = v
-                elif k == 'name' and not best_name: best_name = v
-                elif k in self._watch_tags:
-                    _app(b'  <tag k="%b" v="%b"/>\n' % (self._escape(k), self._escape(v)))
+                if k in loc_name_prios:
+                    prio = loc_name_prios[k]
+                    if prio < best_name_prio:
+                        best_name_prio, best_name = prio, v
+                        
+                elif k in loc_watch_tags or k in loc_poi_triggers:
+                    _app(b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v)))
                     
         if not is_in_way and not is_valid_poi: return
 
-        # Lazy load coordinates (calling C++ under the hood is expensive)
         loc = n.location
         lat, lon = loc.lat, loc.lon
         
@@ -406,13 +493,13 @@ class FinalBuilder(o.SimpleHandler):
         if lon < self.minlon: self.minlon = lon
         elif lon > self.maxlon: self.maxlon = lon
 
-        # 🔥 Low-level C Bytes Formatting: Remove f-string.encode()
         if is_in_way and not is_valid_poi:
-            self._extend(b'<node id="%d" lat="%.5f" lon="%.5f"/>\n' % (n_id, lat, lon))
+            self._extend(b'<node id="%d" visible="true" version="1" lat="%.5f" lon="%.5f"/>\n' % (n_id, lat, lon))
         else:
             self.poi_count += 1
-            node_parts = [b'<node id="%d" lat="%.5f" lon="%.5f">\n' % (n_id, lat, lon)]
-            if best_name: node_parts.append(b'  <tag k="name" v="%b"/>\n' % self._escape(best_name))
+            node_parts = [b'<node id="%d" visible="true" version="1" lat="%.5f" lon="%.5f">\n' % (n_id, lat, lon)]
+            if best_name: 
+                node_parts.append(b'  <tag k="name" v="%b"/>\n' % loc_escape(best_name))
             if parsed_tag_lines: node_parts.extend(parsed_tag_lines)
             node_parts.append(b'</node>\n')
             self._extend(b"".join(node_parts))
@@ -436,32 +523,56 @@ class FinalBuilder(o.SimpleHandler):
         self.write_ways_cache() 
         tags = r.tags
         
-        if tags and tags.get('type') == 'multipolygon':
-            self.rel_count += 1
-            best_name = None
-            rel_parts = [b'<relation id="%d">\n' % r.id]
-            _app = rel_parts.append
+        if not tags or tags.get('type') != 'multipolygon': return
+        
+        b_val = tags.get('building')
+        if b_val and b_val in IGNORE_BUILDING_VALUES:
+            return 
             
-            for tag in tags:
-                k, v = tag.k, tag.v
-                if k in self._drop_keys or k.startswith(self._drop_prefixes): continue
+        self.rel_count += 1
+        best_name = None
+        best_name_prio = 999
+        rel_parts = [b'<relation id="%d" visible="true" version="1">\n' % r.id]
+        _app = rel_parts.append
+        
+        loc_drop_keys = DROP_TAG_KEYS
+        loc_drop_prefixes = DROP_TAG_PREFIXES
+        loc_name_prios = NAME_PRIORITIES
+        loc_watch_tags = WATCH_ALLOWED_TAGS
+        loc_poi_triggers = POI_TRIGGER_KEYS
+        loc_ignore_bldgs = IGNORE_BUILDING_VALUES
+        loc_escape = escape_xml_bytes
+        
+        for tag in tags:
+            k, v = tag.k, tag.v
+            if k in loc_drop_keys or k.startswith(loc_drop_prefixes): continue
+            
+            if k == 'type':
+                _app(b'  <tag k="type" v="%b"/>\n' % loc_escape(v))
                 
-                if k == 'type':
-                    _app(b'  <tag k="type" v="%b"/>\n' % self._escape(v))
-                elif k in self._zh_keys or k == 'name':
-                    if not best_name or k == 'name:zh-Hant': best_name = v
-                elif k in self._watch_tags:
-                    _app(b'  <tag k="%b" v="%b"/>\n' % (self._escape(k), self._escape(v)))
+            elif k == 'building':
+                if v not in loc_ignore_bldgs:
+                    _app(b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v)))
+                
+            elif k in loc_name_prios:
+                prio = loc_name_prios[k]
+                if prio < best_name_prio:
+                    best_name_prio, best_name = prio, v
                     
-            if best_name: _app(b'  <tag k="name" v="%b"/>\n' % self._escape(best_name))
-            for m in r.members:
-                if m.type == 'w': _app(b'  <member type="way" ref="%d" role="%b"/>\n' % (m.ref, self._escape(m.role)))
-            _app(b'</relation>\n')
-            self._extend(b"".join(rel_parts))
+            elif k in loc_watch_tags or k in loc_poi_triggers:
+                _app(b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v)))
+                
+        if best_name: 
+            _app(b'  <tag k="name" v="%b"/>\n' % loc_escape(best_name))
             
-            if len(self.io_buffer) > self.FLUSH_LIMIT:
-                self.f.write(self.io_buffer)
-                self.io_buffer.clear()
+        for m in r.members:
+            if m.type == 'w': _app(b'  <member type="way" ref="%d" role="%b"/>\n' % (m.ref, loc_escape(m.role)))
+        _app(b'</relation>\n')
+        self._extend(b"".join(rel_parts))
+        
+        if len(self.io_buffer) > self.FLUSH_LIMIT:
+            self.f.write(self.io_buffer)
+            self.io_buffer.clear()
 
     def close(self):
         self.write_ways_cache()
@@ -470,7 +581,6 @@ class FinalBuilder(o.SimpleHandler):
             self.io_buffer.clear()
         self.f.write(b'</osm>\n')
         
-        # Write back Bounds
         bounds_str = b'  <bounds minlat="%.5f" minlon="%.5f" maxlat="%.5f" maxlon="%.5f"/>' % (self.minlat, self.minlon, self.maxlat, self.maxlon)
         self.f.seek(self.bounds_pos)
         self.f.write(bounds_str.ljust(120, b' ') + b'\n')
@@ -479,21 +589,27 @@ class FinalBuilder(o.SimpleHandler):
 def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon_deg=0.00003):
     t0 = time.time()
     
-    print(f"🚀 [God Domain Engine V20.7 Ultimate Edition] Started! Input: {input_file}")
+    print(f"🚀 [OSM Optimizer V29.1 True Universal] Started! Input: {input_file}")
+    
+    # 打印當前語系權重陣列供檢查，確保 'name' 權重最高 (數值最小)
+    sorted_prios = sorted(NAME_PRIORITIES.keys(), key=lambda x: NAME_PRIORITIES[x])
+    print(f"   🌍 Target Language Priority: {sorted_prios}")
+    
     if HAS_JIT: print("   ⚡ Numba AVX hardware acceleration engine activated!")
     
-    print(f"⏳ [Pass 1] Scanning relation data...")
+    print(f"⏳ [Pass 1] Scanning relation multi-polygon data...")
     rel_scanner = RelationScanner()
     rel_scanner.apply_file(input_file, locations=False)
     gc.collect()
 
-    temp_ways_name = tempfile.mktemp(suffix=".w.tmp")
-    temp_nodes_name = tempfile.mktemp(suffix=".n.tmp") # Centroid cache
+    # 確保 Windows 下產生的暫存檔路徑合法且獨立
+    temp_ways_name = tempfile.mktemp(suffix=".w.tmp", dir=os.getcwd())
+    temp_nodes_name = tempfile.mktemp(suffix=".n.tmp", dir=os.getcwd()) 
     
-    print(f"⏳ [Pass 2] Triggering Bytes streaming write and optimization engine...")
+    print(f"⏳ [Pass 2] Triggering Bytes streaming write and geometry optimization engine...")
     way_opt = WayOptimizer(temp_ways_name, temp_nodes_name, max_nodes_per_way, epsilon_deg, rel_scanner.relation_ways)
     
-    # ⚠️ Since physical RAM is limited (e.g., 8GB), revert to PyOsmium's recommended disk cache algorithm (sparse_file_array).
+    # Windows 對於記憶體映射 (sparse_file_array) 的限制較多，若失敗自動切換為 flex_mem
     try:
         way_opt.apply_file(input_file, locations=True, idx='sparse_file_array')
     except RuntimeError:
@@ -501,10 +617,10 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon
         
     way_opt.close()
     
-    print(f"   => Successfully extracted {way_opt.extracted_pois:,} building centroids as standalone POIs!")
+    print(f"   => Successfully extracted {way_opt.extracted_pois:,} polygon centroids as standalone POIs!")
     
     gc.collect()
-    print(f"⏳ [Pass 3] Executing seamless merge and final write (GC disabled for sprint)...")
+    print(f"⏳ [Pass 3] Executing seamless merge and final write (Garbage Collection disabled for sprint)...")
     gc.disable()
     
     final_builder = FinalBuilder(output_file, temp_ways_name, temp_nodes_name, way_opt.used_node_ids)
@@ -512,8 +628,14 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon
     final_builder.close()
     
     gc.enable() 
+    
+    # 安全清理 Windows 暫存檔
     for tmp in [temp_ways_name, temp_nodes_name]:
-        if os.path.exists(tmp): os.remove(tmp)
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
     
     print(f"🎉 Map core optimization complete! Total time: {format_time(time.time() - t0)}")
     print(f"   📊 Stats: Kept nodes {len(way_opt.used_node_ids):,} | POI landmarks {final_builder.poi_count:,} | Centroid conversions {way_opt.extracted_pois:,}")
