@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+OSM Optimizer (V20.7 Ultimate Edition)
+===========================================================
+- 🏙️ Building Unlocked: Render building, boundary, aeroway, man_made.
+- 🎯 POI Centroid Extraction: Automatically calculate the center of buildings with POI attributes, converting them into single nodes to extremely compress file size.
+- 🧹 Useless Tag Cleansing: Strip out heavy metadata like wikidata, addr:*, source:* that don't affect visual rendering.
+- 🛡️ Local Variable Binding: Restore local aliases to prevent attribute lookup overhead in loops.
+- 🛡️ Disk Bomb Defused: Use sparse_file_array to prevent global IDs from taking 100GB disk space.
+- ⚡ GC Lock: Disable Garbage Collector during Pass 3 to prevent CPU cycles from being stolen by background scanning.
+"""
+
 import osmium as o
 import sys
 import os
 import tempfile
 import shutil
 import time
+import gc
 
 try:
     import numpy as np
@@ -14,165 +26,287 @@ try:
     HAS_JIT = True
 except ImportError:
     HAS_JIT = False
-    # Dummy decorator so the code runs with plain NumPy even without Numba
-    def njit(f): return f 
 
-# 🌟 Smartwatch map tag whitelist
-WATCH_ALLOWED_TAGS = {
+# ==========================================
+# Constants Area
+# ==========================================
+WATCH_ALLOWED_TAGS = frozenset({
     'highway', 'natural', 'waterway', 'landuse', 'leisure', 
-    'amenity', 'tourism', 'place', 'bridge', 'tunnel', 'historic', 
-    'railway', 'aeroway', 'boundary'
-}
+    'amenity', 'tourism', 'place', 'historic', 'railway', 
+    'tracktype', 'building', 'boundary', 'aeroway', 'man_made', 'shop'
+})
 
-VALID_POI_VALUES = {
+POI_TRIGGER_KEYS = frozenset({
+    'amenity', 'shop', 'leisure', 'tourism', 'sport', 'historic', 'craft', 'office', 'healthcare'
+})
+
+VALID_POI_VALUES = frozenset({
     'peak', 'saddle', 'volcano', 'cave_entrance', 'waterfall', 'spring', 
     'toilets', 'drinking_water', 'hospital', 'police', 'shelter',        
     'convenience', 'supermarket', 'fuel', 'camp_site', 'viewpoint', 
     'information', 'alpine_hut', 'guest_house', 'parking', 'station', 
-    'bus_stop', 'guidepost', 'milestone', 'ruins', 'monument', 'historic',                                     
-    'city', 'town', 'village', 'hamlet', 'park', 'school', 'kindergarten', 'university'
-}
+    'bus_stop', 'guidepost', 'milestone', 'ruins', 'monument', 'city', 'town', 'village', 'hamlet'
+})
 
-ESCAPE_RULES = {'"': "&quot;", "'": "&apos;", "&": "&amp;", "<": "&lt;", ">": "&gt;"}
-def escape_xml(s):
-    if not s: return ""
-    for k, v in ESCAPE_RULES.items():
-        if k in s: s = s.replace(k, v)
-    return s
+ZH_NAME_KEYS = frozenset({'name:zh-Hant', 'name:zh_tw', 'name:zh', 'name:zh_TW'})
+
+# Added: Tag Cleansing List
+DROP_TAG_KEYS = frozenset({
+    'wikidata', 'wikipedia', 'phone', 'website', 'url', 'opening_hours', 
+    'email', 'fax', 'note', 'source', 'fixme', 'operator', 'start_date', 'created_by'
+})
+DROP_TAG_PREFIXES = ('addr:', 'contact:', 'payment:', 'source:', 'generator:', 'name:en')
+
+XML_TAG_LINE_CACHE = {}
+
+def escape_xml_bytes(s: str) -> bytes:
+    if not s: return b""
+    if '&' in s or '<' in s or '>' in s or '"' in s or "'" in s:
+        s = s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&apos;')
+    return s.encode('utf-8')
 
 def format_time(seconds):
     return f"{int(seconds // 60)}m {seconds % 60:.2f}s"
 
-# ==========================================
-# Core algorithm: RDP line simplification
-# ==========================================
-@njit
-def douglas_peucker_indices_fast(pts, epsilon):
-    n = len(pts)
-    if n < 3:
-        arr = np.empty(n, dtype=np.int64)
-        for i in range(n): arr[i] = i
-        return arr
-    epsilon_sq = epsilon * epsilon
-    stack_start, stack_end = np.zeros(n, dtype=np.int64), np.zeros(n, dtype=np.int64)
-    stack_ptr = 0
-    stack_start[0], stack_end[0] = 0, n - 1
-    stack_ptr += 1
-    keep_indices = np.zeros(n, dtype=np.bool_)
-    keep_indices[0], keep_indices[n - 1] = True, True
-    
-    while stack_ptr > 0:
-        stack_ptr -= 1
-        start, end = stack_start[stack_ptr], stack_end[stack_ptr]
-        if end - start <= 1: continue
-        p1_x, p1_y, p2_x, p2_y = pts[start, 0], pts[start, 1], pts[end, 0], pts[end, 1]
-        dx, dy = p2_x - p1_x, p2_y - p1_y
-        l2 = dx*dx + dy*dy 
-        dmax_sq, index = 0.0, start
+if HAS_JIT:
+    @njit(fastmath=True, cache=True, nogil=True, boundscheck=False)
+    def douglas_peucker_fast(pts, epsilon, stack_start, stack_end, keep_indices):
+        n = len(pts)
+        if n < 3:
+            for i in range(n): keep_indices[i] = True
+            return keep_indices[:n]
+            
+        epsilon_sq = epsilon * epsilon
+        stack_ptr = 1
+        stack_start[0] = 0
+        stack_end[0] = n - 1
         
+        for i in range(n): keep_indices[i] = False
+        keep_indices[0], keep_indices[n - 1] = True, True
+        
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            start, end = stack_start[stack_ptr], stack_end[stack_ptr]
+            if end - start <= 1: continue
+                
+            p1_x, p1_y = pts[start, 0], pts[start, 1]
+            p2_x, p2_y = pts[end, 0], pts[end, 1]
+            dx, dy = p2_x - p1_x, p2_y - p1_y
+            l2 = dx*dx + dy*dy 
+            
+            dmax_sq, index = 0.0, start
+            for i in range(start + 1, end):
+                px, py = pts[i, 0], pts[i, 1]
+                if l2 == 0.0:
+                    vx, vy = px - p1_x, py - p1_y
+                    d_sq = vx*vx + vy*vy
+                else:
+                    cross = dy * px - dx * py + p2_x * p1_y - p2_y * p1_x
+                    d_sq = (cross * cross) / l2
+                if d_sq > dmax_sq:
+                    dmax_sq, index = d_sq, i
+                    
+            if dmax_sq > epsilon_sq:
+                keep_indices[index] = True
+                stack_start[stack_ptr], stack_end[stack_ptr] = start, index
+                stack_ptr += 1
+                stack_start[stack_ptr], stack_end[stack_ptr] = index, end
+                stack_ptr += 1
+                
+        return keep_indices[:n]
+
+def douglas_peucker_fallback(pts, epsilon):
+    n = len(pts)
+    if n < 3: return list(range(n))
+    epsilon_sq = epsilon * epsilon
+    stack = [(0, n - 1)]
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    while stack:
+        start, end = stack.pop()
+        if end - start <= 1: continue
+        p1x, p1y = pts[start], pts[end]
+        p2x, p2y = pts[end], pts[end]
+        dx, dy = p2x - p1x, p2y - p1y
+        l2 = dx*dx + dy*dy
+        dmax_sq, index = 0.0, start
         for i in range(start + 1, end):
-            px, py = pts[i, 0], pts[i, 1]
+            px, py = pts[i]
             if l2 == 0.0:
-                vx, vy = px - p1_x, py - p1_y
+                vx, vy = px - p1x, py - p1y
                 d_sq = vx*vx + vy*vy
             else:
-                cross = dy * px - dx * py + p2_x * p1_y - p2_y * p1_x
+                cross = dy * px - dx * py + p2x * p1y - p2y * p1x
                 d_sq = (cross * cross) / l2
-            if d_sq > dmax_sq:
-                dmax_sq, index = d_sq, i
-                
-    if dmax_sq > epsilon_sq:
-        keep_indices[index] = True
-        stack_start[stack_ptr], stack_end[stack_ptr] = start, index
-        stack_ptr += 1
-        stack_start[stack_ptr], stack_end[stack_ptr] = index, end
-        stack_ptr += 1
-    return np.nonzero(keep_indices)[0]
+            if d_sq > dmax_sq: dmax_sq, index = d_sq, i
+        if dmax_sq > epsilon_sq:
+            keep[index] = True
+            stack.extend([(start, index), (index, end)])
+    return [i for i, k in enumerate(keep) if k]
 
-# ==========================================
-# Phase 1: Protect natural polygon relations (fast scan)
-# ==========================================
+
 class RelationScanner(o.SimpleHandler):
     def __init__(self):
         super().__init__()
         self.relation_ways = set()
 
     def relation(self, r):
-        if r.tags.get('type') == 'multipolygon' and not r.tags.get('building'): 
-            for member in r.members:
-                if member.type == 'w':
-                    self.relation_ways.add(member.ref)
+        if r.tags.get('type') == 'multipolygon': 
+            add_way = self.relation_ways.add
+            for m in r.members:
+                if m.type == 'w': add_way(m.ref)
 
-# ==========================================
-# Phase 2: Way optimizer (Douglas-Peucker acceleration + whitelist filtering)
-# ==========================================
+
 class WayOptimizer(o.SimpleHandler):
-    def __init__(self, temp_ways_file, max_nodes_per_way, epsilon_deg, relation_ways):
+    def __init__(self, temp_ways_file, temp_nodes_file, max_nodes_per_way, epsilon_deg, relation_ways):
         super().__init__()
         self.tmp_f = open(temp_ways_file, 'wb', buffering=16*1024*1024)
+        self.tmp_nodes_f = open(temp_nodes_file, 'wb', buffering=16*1024*1024) # Centroid temp file
         self.max_nodes = max_nodes_per_way
         self.base_epsilon = epsilon_deg
         self.relation_ways = relation_ways 
         self.used_node_ids = set()
         self.split_id_counter = -1000000000 
-        self.ignore_highway_types = {'corridor', 'elevator', 'proposed', 'construction', 'abandoned', 'raceway'}
-        self.polygon_safe_limit = 500 
+        self.ignore_highway_types = frozenset({'corridor', 'elevator', 'proposed', 'construction', 'abandoned'})
+        self.polygon_safe_limit = 500  
+        self.extracted_pois = 0
+        
+        self.io_buffer = bytearray()
+        self.nodes_io_buffer = bytearray()
+        self.FLUSH_LIMIT = 16 * 1024 * 1024 
+        
+        if HAS_JIT:
+            self.max_pts_capacity = 40000
+            self.s_pts = np.empty((self.max_pts_capacity, 2), dtype=np.float64)
+            self.s_ref = np.empty(self.max_pts_capacity, dtype=np.int64)
+            self.s_stack_start, self.s_stack_end = np.empty(self.max_pts_capacity, dtype=np.int64), np.empty(self.max_pts_capacity, dtype=np.int64)
+            self.s_keep = np.empty(self.max_pts_capacity, dtype=np.bool_)
 
     def way(self, w):
-        if w.tags.get('building'): return 
+        tags = w.tags
+        if not len(tags): return 
         
-        for tag in w.tags:
-            if tag.k == 'highway' and tag.v in self.ignore_highway_types: return
+        parsed_tag_lines = []
+        poi_tag_lines = [] # Tags for centroid
+        app_tag, app_poi = parsed_tag_lines.append, poi_tag_lines.append
+        
+        zh_name = None
+        has_allowed_tag = is_area = is_linear = has_poi = False
+        
+        for tag in tags:
+            k, v = tag.k, tag.v
+            
+            # 🧹 Tag Cleansing: Skip useless data
+            if k in DROP_TAG_KEYS or k.startswith(DROP_TAG_PREFIXES): continue
+            
+            if k == 'highway':
+                if v in self.ignore_highway_types: return
+                is_linear = True
+            elif k == 'waterway':
+                is_linear = True
+            
+            if k in POI_TRIGGER_KEYS: has_poi = True
+            if k in {'area', 'landcover', 'surface', 'building'}: is_area = True
+                
+            if k in WATCH_ALLOWED_TAGS or has_poi:
+                has_allowed_tag = True
+                line = b'  <tag k="%b" v="%b"/>\n' % (escape_xml_bytes(k), escape_xml_bytes(v))
+                
+                # Transfer POI tags to centroid
+                if has_poi and k != 'building': app_poi(line) 
+                # Keep only tags like building=yes for the polygon body
+                else: app_tag(line) 
+                
+            elif k in ZH_NAME_KEYS:
+                if not zh_name or k == 'name:zh-Hant': zh_name = v
+            elif k == 'name' and not zh_name: zh_name = v
+
+        name_line = b'  <tag k="name" v="%b"/>\n' % escape_xml_bytes(zh_name) if zh_name else b""
+        if name_line:
+            app_poi(name_line)
+            app_tag(name_line)
 
         is_in_relation = w.id in self.relation_ways
-        is_polygon = w.is_closed() and any(tag.k in WATCH_ALLOWED_TAGS or tag.k in {'area', 'landcover', 'surface'} for tag in w.tags)
-
-        if not is_in_relation and len(w.tags) == 0: return
-        if len(w.nodes) < 2: return
-
-        parsed_tags = {}
-        zh_name = None
-        for tag in w.tags:
-            if tag.k in {'name:zh-Hant', 'name:zh_tw', 'name:zh', 'name:zh_TW'}:
-                if not zh_name or tag.k == 'name:zh-Hant': zh_name = tag.v
-            elif tag.k in WATCH_ALLOWED_TAGS:
-                parsed_tags[tag.k] = tag.v
-
-        if zh_name: parsed_tags['name'] = zh_name
-        elif 'name' in w.tags: parsed_tags['name'] = w.tags['name']
-
-        if not parsed_tags and not is_in_relation: return
-
-        pts, valid_nds = [], []
-        for n in w.nodes:
-            try:
-                pts.append((n.location.lon, n.location.lat))
-                valid_nds.append(n.ref)
-            except o.InvalidLocationError: pass
-                
-        if len(pts) < 2: return
+        is_polygon = w.is_closed() and (has_allowed_tag or is_area)
+        if not is_in_relation and not parsed_tag_lines and not poi_tag_lines: return
         
-        if is_polygon:
-            lons, lats = [p[0] for p in pts], [p[1] for p in pts]
-            if (max(lats) - min(lats) < 0.00002) and (max(lons) - min(lons) < 0.00002): return
+        num_nodes = len(w.nodes)
+        if num_nodes < 2: return
+
+        # Read coordinate array
+        if HAS_JIT:
+            if num_nodes > self.max_pts_capacity:
+                self.max_pts_capacity = int(num_nodes * 1.5)
+                self.s_pts = np.empty((self.max_pts_capacity, 2), dtype=np.float64)
+                self.s_ref = np.empty(self.max_pts_capacity, dtype=np.int64)
+
+            idx = 0
+            for n in w.nodes:
+                loc = n.location
+                if loc.valid():
+                    self.s_pts[idx, 0], self.s_pts[idx, 1] = loc.lon, loc.lat
+                    self.s_ref[idx] = n.ref
+                    idx += 1
+            if idx < 2: return
+            pts_array, valid_nds = self.s_pts[:idx], self.s_ref[:idx]
+        else:
+            pts, valid_nds = [], []
+            for n in w.nodes:
+                loc = n.location
+                if loc.valid():
+                    pts.append((loc.lon, loc.lat))
+                    valid_nds.append(n.ref)
+            if len(pts) < 2: return
             
-        pts_array = np.array(pts, dtype=np.float64)
-        current_epsilon = self.base_epsilon
-        kept_indices = douglas_peucker_indices_fast(pts_array, current_epsilon)
+        # 🎯 Core Feature: POI Centroid Extraction
+        if is_polygon and has_poi:
+            if HAS_JIT:
+                center_lon, center_lat = np.mean(pts_array[:, 0]), np.mean(pts_array[:, 1])
+            else:
+                center_lon = sum(p[0] for p in pts) / len(pts)
+                center_lat = sum(p[1] for p in pts) / len(pts)
+                
+            node_id = 20000000000 + w.id # Add 20 billion to avoid ID conflicts
+            centroid_xml = [f'<node id="{node_id}" lat="{center_lat:.5f}" lon="{center_lon:.5f}">\n'.encode('ascii')]
+            if poi_tag_lines: centroid_xml.extend(poi_tag_lines)
+            centroid_xml.append(b'</node>\n')
+            self.nodes_io_buffer.extend(b"".join(centroid_xml))
+            self.extracted_pois += 1
+            
+            if len(self.nodes_io_buffer) > self.FLUSH_LIMIT:
+                self.tmp_nodes_f.write(self.nodes_io_buffer)
+                self.nodes_io_buffer.clear()
+            
+            # If this polygon only has POI tags and no building tag, discard it after centroid extraction
+            if 'building' not in (t.k for t in tags) and not is_in_relation:
+                return
+
+        # Simplify and chunk writing
+        current_epsilon = self.base_epsilon * 3.0 if (is_polygon or is_in_relation) else (self.base_epsilon * 0.9 if is_linear else self.base_epsilon)
+        
+        if HAS_JIT:
+            keep_arr = douglas_peucker_fast(pts_array, current_epsilon, self.s_stack_start, self.s_stack_end, self.s_keep)
+            kept_indices = np.nonzero(keep_arr)[0]
+        else:
+            kept_indices = douglas_peucker_fallback(pts, current_epsilon)
         
         if is_polygon or is_in_relation:
             while len(kept_indices) > self.polygon_safe_limit and current_epsilon < 0.005:
                 current_epsilon *= 2.0
-                kept_indices = douglas_peucker_indices_fast(pts_array, current_epsilon)
+                kept_indices = np.nonzero(douglas_peucker_fast(pts_array, current_epsilon, self.s_stack_start, self.s_stack_end, self.s_keep))[0] if HAS_JIT else douglas_peucker_fallback(pts, current_epsilon)
             
             if len(kept_indices) > self.polygon_safe_limit:
                 kept_indices = kept_indices[:self.polygon_safe_limit]
-                kept_indices[-1] = len(pts) - 1 
-                
-            chunks = [[valid_nds[i] for i in kept_indices]]
-        else:
-            simplified_nds = [valid_nds[i] for i in kept_indices]
-            chunks = [simplified_nds[i:i + self.max_nodes] for i in range(0, len(simplified_nds), max(1, self.max_nodes - 1))]
+                kept_indices[-1] = len(pts_array if HAS_JIT else pts) - 1
+        
+        kept_refs = valid_nds[kept_indices].tolist() if HAS_JIT else [valid_nds[i] for i in kept_indices]
+        chunks = [kept_refs] if (is_polygon or is_in_relation) else [kept_refs[i:i + self.max_nodes] for i in range(0, len(kept_refs), max(1, self.max_nodes - 1))]
+        
+        tag_blob = b"".join(parsed_tag_lines) if parsed_tag_lines else b""
+        
+        # 🚀 Local Variable Binding
+        _extend = self.io_buffer.extend
+        _add_node = self.used_node_ids.add
         
         for chunk in chunks:
             if len(chunk) < 2: continue
@@ -180,175 +314,214 @@ class WayOptimizer(o.SimpleHandler):
             wid = self.split_id_counter if len(chunks) > 1 else w.id
             if len(chunks) > 1: self.split_id_counter -= 1
             
-            lines = [f'<way id="{wid}">\n']
-            for nd_ref in chunk:
-                lines.append(f'<nd ref="{nd_ref}"/>\n')
-                self.used_node_ids.add(nd_ref) 
-                
-            for k, v in parsed_tags.items():
-                lines.append(f'<tag k="{escape_xml(k)}" v="{escape_xml(v)}"/>\n')
-            lines.append('</way>\n')
+            # 🔥 Remove f-string.encode, completely use C-level Bytes formatting
+            chunk_parts = [b'<way id="%d">\n' % wid]
+            _app = chunk_parts.append
             
-            self.tmp_f.write("".join(lines).encode('utf-8'))
+            for nd_ref in chunk:
+                _app(b'  <nd ref="%d"/>\n' % nd_ref)
+                _add_node(nd_ref) 
+                
+            if tag_blob: _app(tag_blob)
+            _app(b'</way>\n')
+            
+            _extend(b"".join(chunk_parts))
 
-    def close(self): self.tmp_f.close()
+        if len(self.io_buffer) > self.FLUSH_LIMIT:
+            self.tmp_f.write(self.io_buffer)
+            self.io_buffer.clear()
 
-# ==========================================
-# Phase 3: Final node and relation builder (pure-string ultra-fast write)
-# ==========================================
+    def close(self):
+        if self.io_buffer: self.tmp_f.write(self.io_buffer)
+        if self.nodes_io_buffer: self.tmp_nodes_f.write(self.nodes_io_buffer)
+        self.tmp_f.close()
+        self.tmp_nodes_f.close()
+
+
 class FinalBuilder(o.SimpleHandler):
-    def __init__(self, output_file, temp_ways_file, used_node_ids):
+    def __init__(self, output_file, temp_ways_file, temp_nodes_file, used_node_ids):
         super().__init__()
-        self.f = open(output_file, 'wb', buffering=16*1024*1024)
+        # 🚀 Increase Buffer size to reduce disk I/O (Syscall)
+        self.f = open(output_file, 'wb', buffering=32*1024*1024)
         self.temp_ways_file = temp_ways_file
+        self.temp_nodes_file = temp_nodes_file
         self.used_node_ids = used_node_ids
         self.ways_written = False
+        self.minlat, self.maxlat, self.minlon, self.maxlon = 90.0, -90.0, 180.0, -180.0
+        self.poi_count, self.rel_count = 0, 0
         
-        self.minlat, self.maxlat = 90.0, -90.0
-        self.minlon, self.maxlon = 180.0, -180.0
-        self.poi_count = 0
-        self.rel_count = 0
+        self.io_buffer = bytearray()
+        self.FLUSH_LIMIT = 32 * 1024 * 1024
         
-        # Write XML header and reserve a perfectly padded 120-byte bounds placeholder
+        # 🚀 Local Variable Binding: Avoid repeated self attribute lookups in loops
+        self._extend = self.io_buffer.extend
+        self._drop_keys = DROP_TAG_KEYS
+        self._drop_prefixes = DROP_TAG_PREFIXES
+        self._valid_pois = VALID_POI_VALUES
+        self._poi_triggers = POI_TRIGGER_KEYS
+        self._zh_keys = ZH_NAME_KEYS
+        self._watch_tags = WATCH_ALLOWED_TAGS
+        self._escape = escape_xml_bytes
+        
         self.f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6">\n')
         self.bounds_pos = self.f.tell()
-        self.f.write(b' ' * 120 + b'\n') 
+        self.f.write(b' ' * 120 + b'\n')
 
     def node(self, n):
-        is_in_way = n.id in self.used_node_ids
-        is_valid_poi = False
+        n_id = n.id
+        is_in_way = n_id in self.used_node_ids
+        tags = n.tags
         
-        if not is_in_way:
-            for tag in n.tags:
-                if tag.v in VALID_POI_VALUES or tag.k in ('amenity', 'tourism'):
-                    is_valid_poi = True; break
-            if not is_valid_poi: return
-
-        lat, lon = n.location.lat, n.location.lon
-        if lat < self.minlat: self.minlat = lat
-        if lat > self.maxlat: self.maxlat = lat
-        if lon < self.minlon: self.minlon = lon
-        if lon > self.maxlon: self.maxlon = lon
-        
-        lat_s, lon_s = f"{lat:.5f}", f"{lon:.5f}"
-
-        # Plain road nodes are written as tag-less elements to minimize file size
-        if is_in_way and not is_valid_poi:
-            self.f.write(f'<node id="{n.id}" lat="{lat_s}" lon="{lon_s}"/>\n'.encode('utf-8'))
+        # 🔥 Nano-second early exit: Not in a kept way and has no tags? Drop it! (Skips 80% of processing)
+        if not is_in_way and not tags: 
             return
 
-        self.poi_count += 1
+        is_valid_poi = False
         best_name = None
-        for k in ('name:zh-Hant', 'name:zh_tw', 'name:zh', 'name'):
-            if k in n.tags:
-                best_name = n.tags[k]; break
-
-        lines = [f'<node id="{n.id}" lat="{lat_s}" lon="{lon_s}">\n']
-        has_name = False
-        for tag in n.tags:
-            k, v = tag.k, tag.v
-            if k == 'name' and best_name:
-                lines.append(f'<tag k="name" v="{escape_xml(best_name)}"/>\n')
-                has_name = True
-            elif k in WATCH_ALLOWED_TAGS and k != 'name':
-                lines.append(f'<tag k="{escape_xml(k)}" v="{escape_xml(v)}"/>\n')
+        parsed_tag_lines = []
+        _app = parsed_tag_lines.append
+        
+        if tags:
+            for tag in tags:
+                k, v = tag.k, tag.v
+                if k in self._drop_keys or k.startswith(self._drop_prefixes): continue
                 
-        if best_name and not has_name:
-            lines.append(f'<tag k="name" v="{escape_xml(best_name)}"/>\n')
+                if not is_valid_poi and (v in self._valid_pois or k in self._poi_triggers):
+                    is_valid_poi = True
+                
+                if k in self._zh_keys:
+                    if not best_name or k == 'name:zh-Hant': best_name = v
+                elif k == 'name' and not best_name: best_name = v
+                elif k in self._watch_tags:
+                    _app(b'  <tag k="%b" v="%b"/>\n' % (self._escape(k), self._escape(v)))
+                    
+        if not is_in_way and not is_valid_poi: return
+
+        # Lazy load coordinates (calling C++ under the hood is expensive)
+        loc = n.location
+        lat, lon = loc.lat, loc.lon
+        
+        if lat < self.minlat: self.minlat = lat
+        elif lat > self.maxlat: self.maxlat = lat
+        if lon < self.minlon: self.minlon = lon
+        elif lon > self.maxlon: self.maxlon = lon
+
+        # 🔥 Low-level C Bytes Formatting: Remove f-string.encode()
+        if is_in_way and not is_valid_poi:
+            self._extend(b'<node id="%d" lat="%.5f" lon="%.5f"/>\n' % (n_id, lat, lon))
+        else:
+            self.poi_count += 1
+            node_parts = [b'<node id="%d" lat="%.5f" lon="%.5f">\n' % (n_id, lat, lon)]
+            if best_name: node_parts.append(b'  <tag k="name" v="%b"/>\n' % self._escape(best_name))
+            if parsed_tag_lines: node_parts.extend(parsed_tag_lines)
+            node_parts.append(b'</node>\n')
+            self._extend(b"".join(node_parts))
             
-        lines.append('</node>\n')
-        self.f.write("".join(lines).encode('utf-8'))
+        if len(self.io_buffer) > self.FLUSH_LIMIT:
+            self.f.write(self.io_buffer)
+            self.io_buffer.clear()
 
     def write_ways_cache(self):
         if not self.ways_written:
+            if self.io_buffer:
+                self.f.write(self.io_buffer)
+                self.io_buffer.clear()
+            with open(self.temp_nodes_file, 'rb') as tn: 
+                shutil.copyfileobj(tn, self.f, length=32*1024*1024)
             with open(self.temp_ways_file, 'rb') as tw: 
-                shutil.copyfileobj(tw, self.f, length=16*1024*1024)
+                shutil.copyfileobj(tw, self.f, length=32*1024*1024)
             self.ways_written = True
 
     def relation(self, r):
-        self.write_ways_cache() # Flush all ways before writing relations
-            
-        if r.tags.get('type') == 'multipolygon' and not r.tags.get('building'):
+        self.write_ways_cache() 
+        tags = r.tags
+        
+        if tags and tags.get('type') == 'multipolygon':
             self.rel_count += 1
             best_name = None
-            for k in ('name:zh-Hant', 'name:zh_tw', 'name:zh', 'name'):
-                if k in r.tags:
-                    best_name = r.tags[k]; break
-                    
-            lines = [f'<relation id="{r.id}">\n']
-            has_name = False
-            for tag in r.tags:
+            rel_parts = [b'<relation id="%d">\n' % r.id]
+            _app = rel_parts.append
+            
+            for tag in tags:
                 k, v = tag.k, tag.v
+                if k in self._drop_keys or k.startswith(self._drop_prefixes): continue
+                
                 if k == 'type':
-                    lines.append(f'<tag k="type" v="{escape_xml(v)}"/>\n')
-                elif k == 'name':
-                    if best_name: lines.append(f'<tag k="name" v="{escape_xml(best_name)}"/>\n')
-                    has_name = True
-                elif k in WATCH_ALLOWED_TAGS:
-                    lines.append(f'<tag k="{escape_xml(k)}" v="{escape_xml(v)}"/>\n')
+                    _app(b'  <tag k="type" v="%b"/>\n' % self._escape(v))
+                elif k in self._zh_keys or k == 'name':
+                    if not best_name or k == 'name:zh-Hant': best_name = v
+                elif k in self._watch_tags:
+                    _app(b'  <tag k="%b" v="%b"/>\n' % (self._escape(k), self._escape(v)))
                     
-            if best_name and not has_name:
-                lines.append(f'<tag k="name" v="{escape_xml(best_name)}"/>\n')
-                
+            if best_name: _app(b'  <tag k="name" v="%b"/>\n' % self._escape(best_name))
             for m in r.members:
-                lines.append(f'<member type="{m.type}" ref="{m.ref}" role="{escape_xml(m.role)}"/>\n')
-                
-            lines.append('</relation>\n')
-            self.f.write("".join(lines).encode('utf-8'))
+                if m.type == 'w': _app(b'  <member type="way" ref="%d" role="%b"/>\n' % (m.ref, self._escape(m.role)))
+            _app(b'</relation>\n')
+            self._extend(b"".join(rel_parts))
+            
+            if len(self.io_buffer) > self.FLUSH_LIMIT:
+                self.f.write(self.io_buffer)
+                self.io_buffer.clear()
 
     def close(self):
         self.write_ways_cache()
+        if self.io_buffer:
+            self.f.write(self.io_buffer)
+            self.io_buffer.clear()
         self.f.write(b'</osm>\n')
         
-        # Seek back to the start and overwrite the bounds element with real values
-        bounds_str = f'  <bounds minlat="{self.minlat:.5f}" minlon="{self.minlon:.5f}" maxlat="{self.maxlat:.5f}" maxlon="{self.maxlon:.5f}"/>'
-        padded = bounds_str.ljust(120, ' ').encode('utf-8') + b'\n'
+        # Write back Bounds
+        bounds_str = b'  <bounds minlat="%.5f" minlon="%.5f" maxlat="%.5f" maxlon="%.5f"/>' % (self.minlat, self.minlon, self.maxlat, self.maxlon)
         self.f.seek(self.bounds_pos)
-        self.f.write(padded)
+        self.f.write(bounds_str.ljust(120, b' ') + b'\n')
         self.f.close()
 
-# ==========================================
-# Main control flow
-# ==========================================
-def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=40, epsilon_deg=0.00003):
+def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon_deg=0.00003):
     t0 = time.time()
     
-    print(f"🚀 [Extreme Optimization Engine] Starting! Input file: {input_file}")
-    if input_file.endswith(".pbf"):
-        print("   💡 PBF format detected — parsing directly in memory, no XML conversion needed!")
-
-    print(f"⏳ [Pass 1] Scanning natural polygon relations...")
+    print(f"🚀 [God Domain Engine V20.7 Ultimate Edition] Started! Input: {input_file}")
+    if HAS_JIT: print("   ⚡ Numba AVX hardware acceleration engine activated!")
+    
+    print(f"⏳ [Pass 1] Scanning relation data...")
     rel_scanner = RelationScanner()
     rel_scanner.apply_file(input_file, locations=False)
+    gc.collect()
 
-    temp_ways_name = tempfile.mktemp(suffix=".tmp")
+    temp_ways_name = tempfile.mktemp(suffix=".w.tmp")
+    temp_nodes_name = tempfile.mktemp(suffix=".n.tmp") # Centroid cache
     
-    print(f"⏳ [Pass 2] Way RDP smart slimming and filtering (JIT engine)...")
-    way_opt = WayOptimizer(temp_ways_name, max_nodes_per_way, epsilon_deg, rel_scanner.relation_ways)
-    way_opt.apply_file(input_file, locations=True, idx='flex_mem') # Automatically caches node coordinates
+    print(f"⏳ [Pass 2] Triggering Bytes streaming write and optimization engine...")
+    way_opt = WayOptimizer(temp_ways_name, temp_nodes_name, max_nodes_per_way, epsilon_deg, rel_scanner.relation_ways)
+    
+    # ⚠️ Since physical RAM is limited (e.g., 8GB), revert to PyOsmium's recommended disk cache algorithm (sparse_file_array).
+    try:
+        way_opt.apply_file(input_file, locations=True, idx='sparse_file_array')
+    except RuntimeError:
+        way_opt.apply_file(input_file, locations=True, idx='flex_mem')
+        
     way_opt.close()
     
-    used_node_ids = way_opt.used_node_ids
-    print(f"   => Extracted {len(used_node_ids):,} required coordinate points.")
+    print(f"   => Successfully extracted {way_opt.extracted_pois:,} building centroids as standalone POIs!")
     
-    print(f"⏳ [Pass 3] High-speed merge and POI extraction (C-level string builder)...")
-    final_builder = FinalBuilder(output_file, temp_ways_name, used_node_ids)
+    gc.collect()
+    print(f"⏳ [Pass 3] Executing seamless merge and final write (GC disabled for sprint)...")
+    gc.disable()
+    
+    final_builder = FinalBuilder(output_file, temp_ways_name, temp_nodes_name, way_opt.used_node_ids)
     final_builder.apply_file(input_file, locations=False)
     final_builder.close()
     
-    os.remove(temp_ways_name)
+    gc.enable() 
+    for tmp in [temp_ways_name, temp_nodes_name]:
+        if os.path.exists(tmp): os.remove(tmp)
     
     print(f"🎉 Map core optimization complete! Total time: {format_time(time.time() - t0)}")
-    print(f"   📊 Stats: Nodes kept {len(used_node_ids):,} | POI landmarks {final_builder.poi_count:,} | Relation polygons {final_builder.rel_count:,}")
+    print(f"   📊 Stats: Kept nodes {len(way_opt.used_node_ids):,} | POI landmarks {final_builder.poi_count:,} | Centroid conversions {way_opt.extracted_pois:,}")
     print(f"   📁 Output file: {output_file} (Size: {os.path.getsize(output_file)/(1024*1024):.2f} MB)")
 
 if __name__ == "__main__":
-    # Accepts .osm.pbf input directly and outputs a clean .osm file
     input_osm = sys.argv[1] if len(sys.argv) > 1 else "base.osm.pbf"
     output_osm = sys.argv[2] if len(sys.argv) > 2 else "base_map.osm"
-    
-    if not os.path.exists(input_osm) and input_osm == "base.osm.pbf":
-        if os.path.exists("base.osm"):
-            input_osm = "base.osm" # Fallback: use .osm if .pbf is not found
-            
+    if not os.path.exists(input_osm) and input_osm == "base.osm.pbf" and os.path.exists("base.osm"):
+        input_osm = "base.osm" 
     optimize_osm_pyosmium(input_osm, output_osm)
