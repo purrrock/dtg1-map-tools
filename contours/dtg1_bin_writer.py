@@ -1,191 +1,218 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import json
+import sys
+import math
 import struct
+import json
 import hashlib
 from typing import List, Tuple, Any
 
-from dtg1_models import MapFeature, HWConfig, safe_encode
+from dtg1_models import (
+    MapFeature, HWConfig, safe_encode,
+    PACK_INT_BIG, PACK_INT_LITTLE, PACK_HEADER_INTS,
+    PACK_STR_12, PACK_STR_4, PACK_STR_28, PACK_STR_100, 
+    PACK_BBOX_INT, PACK_NAV_NODE
+)
 from dtg1_lookup import LookupTables
 
-class MapCompiler:
-    """Generator of hardware binary structures (YZL/SQT/DBF) for ATS3085S platform."""
-
+class PipelineOptimizer:
+    """STR (Sort-Tile-Recursive) Packing & Flattening Optimizer."""
     @staticmethod
-    def _write_yzl_container(filepath: str, payload: bytes, is_idx: bool, lod2_size: int = 0) -> None:
-        """Encapsulate data in the system YZL container with hardware MD5 validation."""
-        payload_size = len(payload)
-        md5_hash = hashlib.md5(payload).digest()
+    def str_pack(features: List[MapFeature], chunk_size: int = HWConfig.CHUNK_SIZE) -> List[List[MapFeature]]:
+        n = len(features)
+        if n == 0: return []
+        num_chunks = (n + chunk_size - 1) // chunk_size
+        if num_chunks == 1: return [features]
+
+        centers = [((f.bbox[0] + f.bbox[2]) / 2, (f.bbox[1] + f.bbox[3]) / 2, f) for f in features]
+        centers.sort(key=lambda item: item[0]) 
         
-        # is_idx condition changes the RAM Load Type marker and LOD2 offset
-        if is_idx:
-            header = b'YZL\x08' + struct.pack("<I", payload_size) + b'\x02\x00\x00\x04' + struct.pack(">I", lod2_size) + md5_hash
-        else:
-            header = b'YZL\x00' + struct.pack("<I", payload_size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + md5_hash
-            
-        with open(filepath, 'wb') as f:
-            f.write(header)
-            f.write(payload)
-
-    @staticmethod
-    def pack_nav_node(v3_jump: int, bbox: Tuple[float, float, float, float], v1: int, v2_count: int) -> bytes:
-        """Packs a 28-byte SQT Navigation Node (C-Union structure)."""
-        return struct.pack("<IffffII", v3_jump, bbox[0], bbox[1], bbox[2], bbox[3], v1, v2_count)
-
-    @staticmethod
-    def _pad(text: Any, length: int) -> bytes:
-        """Pad text to fixed length using safe UTF-8 encoding."""
-        return safe_encode(text, length).ljust(length, b'\x00')
-            
-    @staticmethod
-    def _desc(name: str, length: int) -> bytes:
-        """Pack dBase III field descriptor."""
-        return name.encode('ascii').ljust(11, b'\x00') + b'C' + b'\x00'*4 + bytes([length]) + b'\x00'*15
+        slice_count = math.isqrt(num_chunks) or 1
+        slice_capacity = slice_count * chunk_size
+        
+        chunks = []
+        for i in range(0, n, slice_capacity):
+            slice_items = centers[i:i + slice_capacity]
+            slice_items.sort(key=lambda item: item[1]) 
+            for j in range(0, len(slice_items), chunk_size):
+                chunks.append([item[2] for item in slice_items[j:j + chunk_size]])
+        return chunks
 
     @classmethod
+    def optimize_layer(cls, features: List[MapFeature], is_poi: bool = False) -> Tuple[List[MapFeature], List[List[List[MapFeature]]]]:
+        lods_chunks = []
+        flat_sequential_features = []
+        seen_ids = set()
+        
+        if is_poi:
+            chunks = cls.str_pack(features)
+            lods_chunks.append(chunks)
+            for chunk in chunks: flat_sequential_features.extend(chunk)
+        else:
+            lod0, lod1, lod2, lod3, lod4 = [], [], [], [], []
+            for f in features:
+                lod0.append(f)
+                scale = LookupTables.DISPLAY_SCALES.get(f.code, 20)
+                if scale >= 50: lod1.append(f)
+                if scale >= 100: lod2.append(f)
+                if scale >= 500: lod3.append(f)
+                if scale >= 1000: lod4.append(f)
+            
+            for lod_list in (lod0, lod1, lod2, lod3, lod4):
+                chunks = cls.str_pack(lod_list)
+                lods_chunks.append(chunks)
+                for chunk in chunks: 
+                    for f in chunk:
+                        if id(f) not in seen_ids:
+                            seen_ids.add(id(f))
+                            flat_sequential_features.append(f)
+                            
+        return flat_sequential_features, lods_chunks
+
+class BufferedFileWriter:
+    """Fast write buffer capable of generating real-time hardware MD5 validation."""
+    def __init__(self, filepath: str, is_idx: bool):
+        self.f = open(filepath, 'wb')
+        self.md5 = hashlib.md5()
+        self.size = self.lod2_size = 0
+        self.is_idx = is_idx
+        self.buffer = bytearray()
+        self.BUFFER_LIMIT = 1048576 
+        self.f.write(b'\x00' * HWConfig.YZL_HEADER_SIZE) 
+
+    @property
+    def current_size(self) -> int: return self.size + len(self.buffer)
+
+    def write(self, data: bytes) -> None:
+        self.buffer.extend(data)
+        if len(self.buffer) >= self.BUFFER_LIMIT: self._flush()
+
+    def _flush(self) -> None:
+        if self.buffer:
+            self.f.write(self.buffer); self.md5.update(self.buffer)
+            self.size += len(self.buffer); self.buffer.clear()
+
+    def close(self) -> None:
+        self._flush(); self.f.seek(0)
+        hash_bytes = self.md5.digest()
+        if self.is_idx:
+            header = b'YZL\x08' + PACK_INT_LITTLE(self.size) + b'\x02\x00\x00\x04' + PACK_INT_BIG(self.lod2_size) + hash_bytes
+        else:
+            header = b'YZL\x00' + PACK_INT_LITTLE(self.size) + b'\x00\x00\x00\x04\x00\x00\x00\x00' + hash_bytes
+        self.f.write(header); self.f.close()
+
+class MapCompiler:
+    @classmethod
     def compile_mlp(cls, features: List[MapFeature], filepath: str) -> None:
-        """Serializes raw geometry points into the .mlp binary format."""
         print(f"[>] Compiling geometry: {filepath}...")
-        bin_records = bytearray()
-        record_number = 1
+        writer = BufferedFileWriter(filepath, is_idx=False)
+        current_offset = 0
+        swap_needed = sys.byteorder == 'big'
 
-        for feature in features:
-            minx_i, miny_i, maxx_i, maxy_i = (int(c * 1e6) for c in feature.bbox)
+        for record_number, feature in enumerate(features, 1):
+            body_chunks = [PACK_BBOX_INT(*feature.bbox), PACK_HEADER_INTS(len(feature.parts), len(feature.points) // 2)]
+            if feature.parts: body_chunks.append(struct.pack(f"<{len(feature.parts)}I", *feature.parts))
+            if feature.points:
+                if swap_needed: 
+                    feature.points.byteswap(); body_chunks.append(feature.points.tobytes()); feature.points.byteswap()
+                else: 
+                    body_chunks.append(feature.points.tobytes())
             
-            body = bytearray(struct.pack("<iiii", minx_i, miny_i, maxx_i, maxy_i))
-            body += struct.pack("<II", len(feature.parts), len(feature.points))
-            
-            for part_idx in feature.parts: body += struct.pack("<I", part_idx)
-            for p in feature.points: body += struct.pack("<ii", int(p[0] * 1e6), int(p[1] * 1e6))
-                
-            header = struct.pack(">I", record_number) + struct.pack("<I", len(body))
-            record_bin = header + body
+            body_bin = b''.join(body_chunks)
+            record_bin = PACK_INT_BIG(record_number) + PACK_INT_LITTLE(len(body_bin)) + body_bin
 
-            feature.v1 = len(bin_records) + 8
+            feature.v1 = current_offset + 8
             feature.v2 = 1 
-            feature.mlp_size = len(record_bin)
-            
-            bin_records += record_bin
-            record_number += 1
-
-        cls._write_yzl_container(filepath, bin_records, is_idx=False)
+            writer.write(record_bin); current_offset += len(record_bin)
+        writer.close()
 
     @classmethod
     def compile_db(cls, features: List[MapFeature], filepath: str, is_poi: bool = False) -> None:
-        """Serializes text attributes into a dBase III (.db) format encapsulated in YZL."""
         if not is_poi and not any(f.name for f in features):
             print(f"[~] Layer {filepath} contains no named objects. .db file creation skipped.")
-            for f in features: f.v2 = 0
             return
-        if is_poi and not features: return
-    
+        elif is_poi and not features: return
+        
         print(f"[>] Compiling attributes: {filepath}...")
-        
-        # Standard maps require a dummy zero-record at index 1
-        bin_records = bytearray() if is_poi else bytearray(b'\x00' * HWConfig.DBF_RECORD_LEN) 
+        writer = BufferedFileWriter(filepath, is_idx=False)
+        total_records = len(features) if is_poi else sum(1 for f in features if f.name) + 1
         db_counter = 1 if is_poi else 2 
-        total_records = 0 if is_poi else 1
-
-        for feature in features:
-            if is_poi or feature.name:
-                feature.v2 = db_counter
-                db_counter += 1
-                total_records += 1
-                
-                r_bytes = bytearray(b'\x20')
-                r_bytes += cls._pad(feature.osm_id, 12) + cls._pad(feature.code, 4) + cls._pad(feature.fclass, 28) + cls._pad(feature.name, 100)
-                bin_records += r_bytes
-
-        dbf_header = (
-            bytearray(b'\x03\x00\x00\x00') + 
-            struct.pack('<I', total_records) +
-            struct.pack('<H', HWConfig.DBF_HEADER_LEN) + 
-            struct.pack('<H', HWConfig.DBF_RECORD_LEN) + 
-            b'\x00' * 20 +
-            cls._desc("osm_id", 12) + cls._desc("code", 4) + cls._desc("fclass", 28) + cls._desc("name", 100) + 
-            b'\x0D'
-        )
-        cls._write_yzl_container(filepath, dbf_header + bin_records, is_idx=False)
-
-    @classmethod
-    def _pack_clusters(cls, records: List[MapFeature], idx_buffer: bytearray) -> None:
-        """Inject SQT clusters (max 14 objects) into the index buffer."""
-        clusters = [records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(records), HWConfig.CHUNK_SIZE)]
         
-        if len(clusters) > 1:
-            idx_buffer.extend(struct.pack("<II", 1, len(clusters)))
-            for cluster in clusters:
-                if not cluster: continue
-                c_minx = min(f.bbox[0] for f in cluster)
-                c_miny = min(f.bbox[1] for f in cluster)
-                c_maxx = max(f.bbox[2] for f in cluster)
-                c_maxy = max(f.bbox[3] for f in cluster)
-                
-                v3_jump = (len(cluster) * HWConfig.NODE_SIZE) + 8 
-                idx_buffer.extend(cls.pack_nav_node(v3_jump, (c_minx, c_miny, c_maxx, c_maxy), 0, len(cluster)))                    
-                
-                for f in cluster: idx_buffer.extend(f.pack_data_node())
-        else:
-            count = len(clusters[0]) if clusters else 0
-            idx_buffer.extend(struct.pack("<II", 0, count))
-            for f in clusters[0] if clusters else []: idx_buffer.extend(f.pack_data_node())
+        def desc(n: str, l: int) -> bytes: return n.encode('ascii').ljust(11, b'\x00') + b'C' + b'\x00'*4 + bytes([l]) + b'\x00'*15
+        
+        writer.write(b'\x03\x00\x00\x00' + struct.pack('<IHH', total_records, HWConfig.DBF_HEADER_LEN, HWConfig.DBF_RECORD_LEN) + b'\x00' * 20 + desc("osm_id", 12) + desc("code", 4) + desc("fclass", 28) + desc("name", 100) + b'\x0D')
+        if not is_poi: writer.write(b'\x00' * HWConfig.DBF_RECORD_LEN) 
+
+        for f in features:
+            if is_poi or f.name:
+                f.v2 = db_counter; db_counter += 1
+                writer.write(b'\x20' + 
+                             PACK_STR_12(safe_encode(f.osm_id, 12)) + 
+                             PACK_STR_4(safe_encode(f.code, 4)) + 
+                             PACK_STR_28(safe_encode(f.fclass, 28)) + 
+                             PACK_STR_100(safe_encode(f.name, 100)))
+        writer.close()
 
     @classmethod
-    def compile_idx(cls, features: List[MapFeature], filepath: str, is_poi: bool = False) -> None:
-        """Serializes the multi-level SQT hardware index."""
+    def compile_idx(cls, lods_chunks: List[List[List[MapFeature]]], filepath: str, is_poi: bool = False) -> None:
         print(f"[>] Compiling SQT index: {filepath}...")
-        idx_buffer = bytearray()
+        writer = BufferedFileWriter(filepath, is_idx=not is_poi)
         
-        if is_poi:
-            # Single LOD level for POI
-            idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00') 
-            if not features:
-                idx_buffer.extend(struct.pack("<II", 0, 0))
-            else:
-                for f in features: f.v1 = 0
-                cls._pack_clusters(features, idx_buffer)
-                
-            cls._write_yzl_container(filepath, idx_buffer, is_idx=False)
+        def write_cluster(cluster):
+            c_minx, c_miny, c_maxx, c_maxy = cluster[0].bbox
+            for f in cluster[1:]:
+                bx0, by0, bx1, by1 = f.bbox
+                if bx0 < c_minx: c_minx = bx0
+                if by0 < c_miny: c_miny = by0
+                if bx1 > c_maxx: c_maxx = bx1
+                if by1 > c_maxy: c_maxy = by1
+            v3_jump = (len(cluster) * HWConfig.NODE_SIZE) + 8
+            writer.write(PACK_NAV_NODE(v3_jump, c_minx*1e-6, c_miny*1e-6, c_maxx*1e-6, c_maxy*1e-6, 0, len(cluster)))                    
+            for f in cluster: writer.write(f.pack_data_node())
 
+        if is_poi:
+            writer.write(b'SQT\x01\x01\x00\x00\x00') 
+            clusters = lods_chunks[0] if lods_chunks else []
+            if not clusters: writer.write(b'\x00\x00\x00\x00\x00\x00\x00\x00')
+            elif len(clusters) > 1:
+                writer.write(PACK_HEADER_INTS(1, len(clusters)))
+                for c in clusters: write_cluster(c)
+            else:
+                writer.write(PACK_HEADER_INTS(0, len(clusters[0])))
+                for f in clusters[0]: writer.write(f.pack_data_node())
         else:
-            # Standard multi-level geometry (LOD 0, 1, 2)
-            lod_filters = [
-                lambda c: True,
-                lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500, 
-                lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 1000
-            ]
-            
-            lod2_size = 0
-            for lod_index, condition in enumerate(lod_filters):
-                start_len = len(idx_buffer)
-                lod_records = [f for f in features if condition(f.code)]
-                
-                idx_buffer.extend(b'SQT\x01\x00\x00\x00\x00') 
-                
-                if not lod_records:
-                    idx_buffer.extend(struct.pack("<II", 0, 0))
+            last_lod_size = 0
+            for lod_index, clusters in enumerate(lods_chunks):
+                start_len = writer.current_size
+                writer.write(b'SQT\x01\x00\x00\x00\x00')
+                if not clusters: writer.write(b'\x00\x00\x00\x00\x00\x00\x00\x00')
+                elif len(clusters) > 1:
+                    writer.write(PACK_HEADER_INTS(1, len(clusters)))
+                    for c in clusters: write_cluster(c)
                 else:
-                    cls._pack_clusters(lod_records, idx_buffer)
-        
-                if lod_index == 2: lod2_size = len(idx_buffer) - start_len
-            
-            cls._write_yzl_container(filepath, idx_buffer, is_idx=True, lod2_size=lod2_size)
+                    writer.write(PACK_HEADER_INTS(0, len(clusters[0])))
+                    for f in clusters[0]: writer.write(f.pack_data_node())
+                if lod_index == 4: last_lod_size = writer.current_size - start_len
+            writer.lod2_size = last_lod_size 
+        writer.close()
 
     @staticmethod
     def create_empty_layer(layer_prefix: str) -> None:
-        """Generates system dummy layers for missing geometry types."""
         print(f"[>] Creating system Hex dummy: {layer_prefix}...")
-        mlp_hex = "595A4C00000000000000000400000000D41D8CD98F00B204E9800998ECF8427E"
-        idx_hex = "595A4C10300000000000000400000010E5F9D2228804251B5F9E3EAB298C30E5535154010100000000000000000000005351540101000000000000000000000053515401010000000000000000000000"
-        with open(f"{layer_prefix}.mlp", "wb") as f: f.write(bytearray.fromhex(mlp_hex))
-        with open(f"{layer_prefix}.idx", "wb") as f: f.write(bytearray.fromhex(idx_hex))
-  
+        with open(f"{layer_prefix}.mlp", "wb") as f: 
+            f.write(bytearray.fromhex("595A4C00000000000000000400000000D41D8CD98F00B204E9800998ECF8427E"))
+        idx_writer = BufferedFileWriter(f"{layer_prefix}.idx", is_idx=True)
+        # Writes the 5 empty LODs required by the hardware
+        for _ in range(5): 
+            idx_writer.write(b'SQT\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
+        idx_writer.lod2_size = 16
+        idx_writer.close()
+ 
     @staticmethod
-    def create_map_name(name: str, meta_records: List[MapFeature], out_file: str = "map.name") -> None:
-        """Generates the JSON camera centering file."""
+    def create_map_name(name: str, meta_records: List[MapFeature], out_file: str) -> None:
         if not meta_records: return
-        center_lat = (min(r.bbox[1] for r in meta_records) + max(r.bbox[3] for r in meta_records)) / 2.0
-        center_lon = (min(r.bbox[0] for r in meta_records) + max(r.bbox[2] for r in meta_records)) / 2.0
-        with open(out_file, "w", encoding="utf-8") as f:
+        center_lat = (min(r.bbox[1] for r in meta_records) + max(r.bbox[3] for r in meta_records)) * 5e-7
+        center_lon = (min(r.bbox[0] for r in meta_records) + max(r.bbox[2] for r in meta_records)) * 5e-7
+        with open(out_file, "w", encoding="utf-8") as f: 
             json.dump({"centerLat": center_lat, "centerLon": center_lon, "mapName": name}, f, separators=(',', ':'))

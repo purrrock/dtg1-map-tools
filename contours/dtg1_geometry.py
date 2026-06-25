@@ -3,40 +3,24 @@
 
 """
 Geometry helpers for DTG1 map compiler.
-
-Contains:
-- POIGeometryFactory: generator of low-polygon POI primitives (triangle, rhombus, cross, etc.)
-- PERSPECTIVE_Y_MULTIPLIER constant (1.5) for ATS3085S compensation
-- is_clockwise(points): CW winding rule checker
-
-API mirrors the original usage in dtg1_map_compiler.py: POIGeometryFactory.generate_polygon(shape_type, center_lon, center_lat)
-and is_clockwise(points) which accepts a sequence of (lon, lat) tuples (closed or open) and returns True if ring is clockwise.
+Optimized with pure Python DP and array.array structures.
 """
 
-from typing import List, Tuple
 import math
+import array
 
 EARTH_RADIUS = 6378137.0
 PERSPECTIVE_Y_MULTIPLIER = 1.5
 R = 4.1
 
 class POIGeometryFactory:
-    """Generator of low-polygon primitives for the POI layer.
-
-    Usage: POIGeometryFactory.generate_polygon(shape_type, center_lon, center_lat)
-    center_lon/center_lat expected in degrees (WGS84).
-    Returns list of (lon, lat) tuples.
-    """
     EARTH_RADIUS = EARTH_RADIUS
     R = R
     PERSPECTIVE_Y_MULTIPLIER = PERSPECTIVE_Y_MULTIPLIER
 
     @classmethod
-    def generate_polygon(cls, shape_type: str, center_lon: float, center_lat: float) -> List[Tuple[float, float]]:
-        """Convert metric shapes into spherical polygons (WGS 84)."""
-        R = cls.R
-
-        # Basic low-poly templates (x: meters east, y: meters north)
+    def generate_polygon(cls, shape_type: str, center_lon_scaled: int, center_lat_scaled: int) -> array.array:
+        """Convert metric shapes into spherical polygons (WGS 84). Returns scaled array.array."""
         shapes = {
             "rhombus": [(0, R * 1.4), (R, 0), (0, -R * 1.4), (-R, 0), (0, R * 1.4)],
             "triangle": [(0, R), (R, -R), (-R, -R), (0, R)],
@@ -53,34 +37,74 @@ class POIGeometryFactory:
         }
 
         rel_coords = shapes.get(shape_type, shapes["rhombus"])
-        points: List[Tuple[float, float]] = []
-        lat_rad = math.radians(center_lat)
-        cos_lat = math.cos(lat_rad)
+        lon, lat = center_lon_scaled * 1e-6, center_lat_scaled * 1e-6
+        earth_rad_cos = cls.EARTH_RADIUS * max(abs(math.cos(math.radians(lat))), 1e-10)
+        
+        arr = array.array('i')
+        for x, y in rel_coords:
+            arr.extend((
+                int((lon + (x / earth_rad_cos) * (180.0 / math.pi)) * 1e6),
+                int((lat + ((y * cls.PERSPECTIVE_Y_MULTIPLIER) / cls.EARTH_RADIUS) * (180.0 / math.pi)) * 1e6)
+            ))
+        return arr
 
-        for x_offset, y_offset in rel_coords:
-            y_offset_stretched = y_offset * cls.PERSPECTIVE_Y_MULTIPLIER
-            d_lat = (y_offset_stretched / cls.EARTH_RADIUS) * (180.0 / math.pi)
-            d_lon = (x_offset / (cls.EARTH_RADIUS * cos_lat)) * (180.0 / math.pi)
-            points.append((center_lon + d_lon, center_lat + d_lat))
-
-        return points
-
-
-def is_clockwise(points: List[Tuple[float, float]]) -> bool:
-    """Check ring orientation using signed area.
-
-    Accepts sequence of (lon, lat) tuples. Works with closed rings (first == last) or open rings.
-    Returns True if ring is clockwise (CW winding), False otherwise.
-    """
-    if not points:
+def is_clockwise(arr: array.array) -> bool:
+    """Check ring orientation using signed area."""
+    if not arr or len(arr) < 6:
         return False
 
-    total = 0.0
-    n = len(points)
-    for i in range(n):
-        x1, y1 = points[i]
-        x2, y2 = points[(i + 1) % n]
-        total += (x1 * y2 - x2 * y1)
+    area = 0.0
+    x1, y1 = arr[0], arr[1]
+    for i in range(2, len(arr), 2):
+        x2, y2 = arr[i], arr[i+1]
+        area += (x1 * y2 - x2 * y1)
+        x1, y1 = x2, y2
+        
+    return area < 0.0
 
-    # Negative signed area indicates clockwise in the original implementation
-    return total < 0.0
+def reverse_array_inplace(arr: array.array) -> None:
+    """Reverse point pairs in-place."""
+    n = len(arr)
+    for i in range(0, n // 2, 2):
+        j = n - 2 - i
+        arr[i], arr[j], arr[i+1], arr[j+1] = arr[j], arr[i], arr[j+1], arr[i+1]
+
+def douglas_peucker_gpx(arr: array.array, epsilon: float) -> array.array:
+    """Pure Python DP for user provided raw GPX tracks."""
+    n = len(arr) // 2
+    if n <= 2: return arr
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    eps_sq = float(epsilon * epsilon)
+    
+    while stack:
+        start, end = stack.pop()
+        p1x, p1y = float(arr[start*2]), float(arr[start*2+1])
+        p2x, p2y = float(arr[end*2]), float(arr[end*2+1])
+        dx, dy = p2x - p1x, p2y - p1y
+        max_dist_sq, max_idx = -1.0, -1
+        
+        if dx == 0.0 and dy == 0.0:
+            for i in range(start + 1, end):
+                vx, vy = float(arr[i*2]) - p1x, float(arr[i*2+1]) - p1y
+                dist_sq = vx*vx + vy*vy
+                if dist_sq > max_dist_sq: max_dist_sq, max_idx = dist_sq, i
+            if max_dist_sq > eps_sq:
+                keep[max_idx] = True
+                stack.extend(((start, max_idx), (max_idx, end)))
+        else:
+            eps_sq_len = eps_sq * (dx*dx + dy*dy)
+            for i in range(start + 1, end):
+                vx, vy = float(arr[i*2]) - p1x, float(arr[i*2+1]) - p1y
+                cross = dy * vx - dx * vy
+                cross_sq = cross * cross
+                if cross_sq > max_dist_sq: max_dist_sq, max_idx = cross_sq, i
+            if max_dist_sq > eps_sq_len:
+                keep[max_idx] = True
+                stack.extend(((start, max_idx), (max_idx, end)))
+            
+    out_arr = array.array('i')
+    for i in range(n):
+        if keep[i]: out_arr.extend((arr[i*2], arr[i*2+1]))
+    return out_arr
