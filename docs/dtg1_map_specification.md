@@ -101,15 +101,16 @@ Contains the cartographic primitive itself. Unpacking format (Python): `<ffffIII
 > * **Offset `0x00 - 0x0F` (Point Injection):** 32-bit Float coordinates are written directly into the BBox. Strict duplication is required: `minX == maxX` and `minY == maxY`.
 > * **Offset `0x14 - 0x17` (v1):** Ignored by the graphics parser when the topology marker is `0x01000000`. In factory maps, these are increasing values.
 
-#### 2. Nav Node (Navigation Node)
-Opens a geometry cluster (only in Mode `0x01`). It is immediately followed by data nodes. Unpacking format (Python): `<IffffII`.
+#### 2. Nav Node (Navigation Node / Macro Node)**
+Открывает геометрию (Mode 0x00) или ветку иерархического R-дерева (Mode > 0x01).
+Формат распаковки (Python): `<IffffII`.
 
 | Offset | Size | Type | Description |
-| :--- | :--- | :--- | :--- |
-| `0x00 - 0x03` | 4 | `uint32` | **v3_jump** (Early Exit jump). Formula: `(Number of Data Nodes * 28) + 8` |
-| `0x04 - 0x13` | 16 | `float[4]` | Cluster BBox (covers all nested objects) |
-| `0x14 - 0x17` | 4 | `uint32` | **v1** (Hardware zero — Nav-type marker for the state machine) |
-| `0x18 - 0x1B` | 4 | `uint32` | **v2** (Number of Data Nodes nested within the cluster) |
+| ------ | ------ | ------ | ------ |
+| 0x00 - 0x03 | 4 | uint32 | `v3_jump` (Early Exit jump). Размер всего дочернего поддерева в байтах + 8 байт компенсации префетча. |
+| 0x04 - 0x13 | 16 | float[4] | Cluster BBox (охватывает все вложенные дочерние BBox) |
+| 0x14 - 0x17 | 4 | uint32 | `v1` (Tree Depth / Высота поддерева). `0` = потомками являются `Data Node`. `>0` = потомками являются макро-узлы (`Nav Node` с уровнем `v1 - 1`). |
+| 0x18 - 0x1B | 4 | uint32 | `v2` (Количество дочерних узлов непосредственно внутри текущего кластера). |
 
 > **Warning:** The `v3_jump` field requires mandatory hardware prefetch compensation (`+8` bytes to the jump length).
 
@@ -232,8 +233,8 @@ Each LOD level begins with a 16-byte header (state machine):
 | :--- | :--- | :--- |
 | `0x00 - 0x03` | **Signature** | `SQT\x01` (`53 51 54 01`) |
 | `0x04 - 0x07` | **Topology Marker** | `0x00000000` — Vector (read `.mlp`)<br>`0x01000000` — Point (read from BBox) |
-| `0x08 - 0x0B` | **LOD Mode Switch** | `0x00` = Flat List (No Nav Nodes)<br>`0x01` = Clustered (With Nav Node hierarchy) |
-| `0x0C - 0x0F` | **Count** | If Mode `0x00` = number of objects (Data Nodes)<br>If Mode `0x01` = number of clusters (Nav Nodes) |
+| `0x08 - 0x0B` | LOD Mode Switch | `0x00` = Flat List<br>`0x01` = Одноуровневые кластеры<br>`>0x01` = Глубина R-дерева (Например, `0x05` означает 5 уровней вложенности Nav Nodes). |
+| `0x0C - 0x0F` | Count | Количество корневых узлов верхнего уровня (внутри текущего SQT-блока). |
 
 The boundary between detail levels is determined by the state machine logic (completion of batch reading). An empty section consists strictly of 16 bytes with `Mode = 0` and `Count = 0`. The POI layer is single-level (LOD 0 only); empty sections for it are not generated.
 

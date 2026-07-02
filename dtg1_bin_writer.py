@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import json
+import math
 import struct
 import hashlib
 from typing import List, Tuple, Any
 
-from dtg1_models import MapFeature, HWConfig, safe_encode
+from dtg1_models import MapFeature, RTreeNode, HWConfig, safe_encode
 from dtg1_lookup import LookupTables
 
 class MapCompiler:
@@ -18,7 +19,6 @@ class MapCompiler:
         payload_size = len(payload)
         md5_hash = hashlib.md5(payload).digest()
         
-        # is_idx condition changes the RAM Load Type marker and LOD2 offset
         if is_idx:
             header = b'YZL\x08' + struct.pack("<I", payload_size) + b'\x02\x00\x00\x04' + struct.pack(">I", lod2_size) + md5_hash
         else:
@@ -27,11 +27,6 @@ class MapCompiler:
         with open(filepath, 'wb') as f:
             f.write(header)
             f.write(payload)
-
-    @staticmethod
-    def pack_nav_node(v3_jump: int, bbox: Tuple[float, float, float, float], v1: int, v2_count: int) -> bytes:
-        """Packs a 28-byte SQT Navigation Node (C-Union structure)."""
-        return struct.pack("<IffffII", v3_jump, bbox[0], bbox[1], bbox[2], bbox[3], v1, v2_count)
 
     @staticmethod
     def _pad(text: Any, length: int) -> bytes:
@@ -82,7 +77,6 @@ class MapCompiler:
     
         print(f"[>] Compiling attributes: {filepath}...")
         
-        # Standard maps require a dummy zero-record at index 1
         bin_records = bytearray() if is_poi else bytearray(b'\x00' * HWConfig.DBF_RECORD_LEN) 
         db_counter = 1 if is_poi else 2 
         total_records = 0 if is_poi else 1
@@ -109,47 +103,79 @@ class MapCompiler:
         cls._write_yzl_container(filepath, dbf_header + bin_records, is_idx=False)
 
     @classmethod
-    def _pack_clusters(cls, records: List[MapFeature], idx_buffer: bytearray) -> None:
-        """Inject SQT clusters (max 14 objects) into the index buffer."""
-        clusters = [records[i:i + HWConfig.CHUNK_SIZE] for i in range(0, len(records), HWConfig.CHUNK_SIZE)]
+    def _build_str_layer(cls, items: List[Any], level: int) -> List[RTreeNode]:
+        """
+        Sort-Tile-Recursive (STR) Bulk Loading Algorithm.
+        Разбивает плоский массив на квадратные матрицы (Tiles) для аппаратного Z-Culling.
+        """
+        if not items: return []
+            
+        # 1. Сортировка объектов по оси X (Долгота центроида)
+        items.sort(key=lambda item: (item.bbox[0] + item.bbox[2]) / 2.0)
         
-        if len(clusters) > 1:
-            idx_buffer.extend(struct.pack("<II", 1, len(clusters)))
-            for cluster in clusters:
-                if not cluster: continue
-                c_minx = min(f.bbox[0] for f in cluster)
-                c_miny = min(f.bbox[1] for f in cluster)
-                c_maxx = max(f.bbox[2] for f in cluster)
-                c_maxy = max(f.bbox[3] for f in cluster)
+        # 2. Вычисление математических лимитов слайсов
+        num_nodes = math.ceil(len(items) / HWConfig.CHUNK_SIZE)
+        num_slices = math.ceil(math.sqrt(num_nodes))
+        
+        if num_slices == 0: return []
+            
+        slice_capacity = num_slices * HWConfig.CHUNK_SIZE
+        
+        nodes = []
+        # 3. Нарезка вертикальных слайсов и сортировка их по оси Y (Широта центроида)
+        for i in range(0, len(items), slice_capacity):
+            slc = items[i:i + slice_capacity]
+            slc.sort(key=lambda item: (item.bbox[1] + item.bbox[3]) / 2.0)
+            
+            # 4. Упаковка в C-Union кластеры (по CHUNK_SIZE элементов)
+            for j in range(0, len(slc), HWConfig.CHUNK_SIZE):
+                chunk = slc[j:j + HWConfig.CHUNK_SIZE]
+                nodes.append(RTreeNode(level=level, children=chunk))
                 
-                v3_jump = (len(cluster) * HWConfig.NODE_SIZE) + 8 
-                idx_buffer.extend(cls.pack_nav_node(v3_jump, (c_minx, c_miny, c_maxx, c_maxy), 0, len(cluster)))                    
+        return nodes
+
+    @classmethod
+    def _build_rtree(cls, features: List[MapFeature]) -> Tuple[int, List[RTreeNode]]:
+        """
+        Рекурсивно строит древовидную иерархию Макро-узлов (Nav Nodes).
+        Возвращает: (Глубина дерева, Список корневых макро-узлов)
+        """
+        if not features:
+            return 0, []
+            
+        current_layer = features
+        level = 0
+        
+        while True:
+            current_layer = cls._build_str_layer(current_layer, level)
+            level += 1
+            # Останавливаемся, если весь слой помещается в один массив корневых узлов
+            if len(current_layer) <= HWConfig.CHUNK_SIZE:
+                break
                 
-                for f in cluster: idx_buffer.extend(f.pack_data_node())
-        else:
-            count = len(clusters[0]) if clusters else 0
-            idx_buffer.extend(struct.pack("<II", 0, count))
-            for f in clusters[0] if clusters else []: idx_buffer.extend(f.pack_data_node())
+        return level, current_layer
 
     @classmethod
     def compile_idx(cls, features: List[MapFeature], filepath: str, is_poi: bool = False) -> None:
-        """Serializes the multi-level SQT hardware index."""
-        print(f"[>] Compiling SQT index: {filepath}...")
+        """Serializes the multi-level SQT hardware index using R-Tree Hierarchy."""
+        print(f"[>] Compiling Hierarchical SQT index: {filepath}...")
         idx_buffer = bytearray()
         
         if is_poi:
-            # Single LOD level for POI
-            idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00') 
+            # Для больших массивов POI теперь также применяется R-Tree сжатие
             if not features:
-                idx_buffer.extend(struct.pack("<II", 0, 0))
+                idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0))
             else:
                 for f in features: f.v1 = 0
-                cls._pack_clusters(features, idx_buffer)
+                depth, root_nodes = cls._build_rtree(features)
+                
+                idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", depth, len(root_nodes)))
+                for node in root_nodes: idx_buffer.extend(node.pack())
                 
             cls._write_yzl_container(filepath, idx_buffer, is_idx=False)
 
         else:
-            # Standard multi-level geometry (LOD 0, 1, 2)
+            # Стандартная многоуровневая ГИС-геометрия (LOD 0, 1, 2)
             lod_filters = [
                 lambda c: True,
                 lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500, 
@@ -161,14 +187,17 @@ class MapCompiler:
                 start_len = len(idx_buffer)
                 lod_records = [f for f in features if condition(f.code)]
                 
-                idx_buffer.extend(b'SQT\x01\x00\x00\x00\x00') 
-                
                 if not lod_records:
-                    idx_buffer.extend(struct.pack("<II", 0, 0))
+                    idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0))
                 else:
-                    cls._pack_clusters(lod_records, idx_buffer)
-        
-                if lod_index == 2: lod2_size = len(idx_buffer) - start_len
+                    depth, root_nodes = cls._build_rtree(lod_records)
+                    
+                    # Динамическая запись 16-байтового заголовка SQT
+                    idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", depth, len(root_nodes)))
+                    for node in root_nodes: idx_buffer.extend(node.pack())
+                        
+                if lod_index == 2: 
+                    lod2_size = len(idx_buffer) - start_len
             
             cls._write_yzl_container(filepath, idx_buffer, is_idx=True, lod2_size=lod2_size)
 

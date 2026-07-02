@@ -63,3 +63,56 @@ class MapFeature:
             self.bbox[0], self.bbox[1], self.bbox[2], self.bbox[3], 
             self.code, self.v1, self.v2
         )
+
+@dataclass
+class RTreeNode:
+    """
+    Represents a Hierarchical Macro-Node (Nav Node) for the Spatial Quadrant Tree.
+    Calculates boundaries and pre-fetches byte-offsets for hardware Z-Culling.
+    """
+    level: int
+    children: List[Any]  # List of MapFeature (if level 0) or RTreeNode (if level > 0)
+    bbox: Tuple[float, float, float, float] = field(init=False)
+    v3_jump: int = field(init=False)
+    bin_size: int = field(init=False)
+
+    def __post_init__(self):
+        # 1. Вычисление охватывающего прямоугольника (Enveloping BBox)
+        minx = min(c.bbox[0] for c in self.children)
+        miny = min(c.bbox[1] for c in self.children)
+        maxx = max(c.bbox[2] for c in self.children)
+        maxy = max(c.bbox[3] for c in self.children)
+        self.bbox = (minx, miny, maxx, maxy)
+
+        # 2. Вычисление размера дочернего поддерева в байтах
+        if self.level == 0:
+            # Уровень 0 (Дно дерева): Дети — это сырая геометрия (Data Nodes)
+            child_payload_size = len(self.children) * HWConfig.NODE_SIZE
+        else:
+            # Уровень > 0 (Макро-узлы): Дети — это другие RTreeNode
+            child_payload_size = sum(c.bin_size for c in self.children)
+            
+        # Аппаратный прыжок = размер всего дерева под этим узлом + 8 байт компенсации
+        self.v3_jump = child_payload_size + 8
+        # Собственный размер в бинарнике = 28 байт (сам узел) + все поддерево
+        self.bin_size = HWConfig.NODE_SIZE + child_payload_size
+
+    def pack(self) -> bytes:
+        """
+        Рекурсивная упаковка C-Union структур дерева в бинарный поток.
+        """
+        data = bytearray(struct.pack(
+            "<IffffII", 
+            self.v3_jump, 
+            self.bbox[0], self.bbox[1], self.bbox[2], self.bbox[3], 
+            self.level, 
+            len(self.children)
+        ))
+        
+        for child in self.children:
+            if self.level == 0:
+                data.extend(child.pack_data_node())
+            else:
+                data.extend(child.pack())
+                
+        return bytes(data)
