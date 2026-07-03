@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Optional
 
@@ -123,8 +122,7 @@ class OSMParser:
                     count += 1
                     
                     if not (count & 0x1FFFF):
-                        sys.stdout.write(f"\r    Nodes cached: {count:,}")
-                        sys.stdout.flush()
+                        print(f"\r    Nodes cached: {count:,}", end="", flush=True)
                 
                 if elem.tag in TARGET_TAGS:
                     elem.clear()
@@ -141,8 +139,6 @@ class OSMParser:
         except StopIteration: return
         
         root_clear = root.clear
-        stdout_write = sys.stdout.write
-        stdout_flush = sys.stdout.flush
         
         processors = {
             'way': self._process_way,
@@ -161,8 +157,7 @@ class OSMParser:
                     root_clear()
                     
                     if not (count & 0x3FFF):
-                        stdout_write(f"\r    Elements processed: {count:,}")
-                        stdout_flush()
+                        print(f"\r    Elements processed: {count:,}", end="", flush=True)
             
         print(f"\r    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).      ")
 
