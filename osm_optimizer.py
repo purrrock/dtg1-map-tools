@@ -22,10 +22,7 @@ except ImportError:
 def douglas_peucker_indices_fast(pts, epsilon):
     n = len(pts)
     if n < 3:
-        arr = np.empty(n, dtype=np.int64)
-        for i in range(n): 
-            arr[i] = i
-        return arr
+        return np.arange(n, dtype=np.int64)
 
     epsilon_sq = epsilon * epsilon
     stack_start = np.zeros(n, dtype=np.int64)
