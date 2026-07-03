@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-OSM Optimizer (V29.1 True Universal for Windows)
+OSM Optimizer (V30 Ultimate Stable Universal Edition + POI Dual Display Magic)
 ===========================================================
-- 🌍 True Universal Engine: 嚴格尊崇 OSM 標準，絕對優先保留本地原名 (`name`)，無任何語系硬編碼。
-- 🪟 Windows PowerShell 友善: 拔除會因 Windows 語系字串而崩潰的偵測邏輯。
-- 🔧 MAP_LANG Override: 若需強制翻譯，支援 PowerShell 環境變數 ($env:MAP_LANG="zh_TW")。
-- 🛠️ Multipolygon Rescue: 複合建築(車站/醫院)防護。
-- 📉 Extreme Compression: 極致壓縮，刪除無名建築與微型多邊形。
-- ⚡ C-Level DP & Formatting: Numba JIT 極限硬體加速。
+- 🌍 Perfect language correction: Integrates V20.5's Traditional Chinese fault tolerance (prevents parks from disappearing) + OSM international standards (`name` > `name:en` prevents local roads from becoming English).
+- 🪟 100% Windows PowerShell friendly: Execute directly, globally applicable.
+- 🌲 Landmark return: Restores the retention weight of key POIs like `park`, `school`, `historic`.
+- 🎯 POI Dual Display: Automatically extracts the centroid of polygons with landmark attributes to generate icons, while "retaining the original polygon area".
+- 🗑️ Junk name filtering: Automatically removes "unnamed", "nameless", "industrial roads", etc.
+- ⚡ Core restoration: Retains V20.5's clean logic and Numba AVX high-speed engine.
 """
 
 import osmium as o
@@ -29,39 +29,27 @@ except ImportError:
     HAS_JIT = False
 
 # ==========================================
-# 🌍 True Universal Language Engine
+# 🌍 Perfect Language Weight Engine (Automatically compatible with Taiwan and global map data)
+# The smaller the number, the higher the priority
 # ==========================================
-def get_universal_lang_priorities():
-    priorities = {}
-    idx = 0
-    
-    # 支援透過環境變數強制覆寫地圖語言 (PowerShell: $env:MAP_LANG="zh_TW")
-    env_lang = os.environ.get('MAP_LANG')
-    
-    if env_lang:
-        lang = env_lang.split('_')[0].lower()
-        region = env_lang.split('_')[1].upper() if '_' in env_lang else ''
-        
-        if lang == 'zh':
-            if region in ('TW', 'HK', 'MO'):
-                for k in ('name:zh-Hant', 'name:zh-TW', 'name:zh_tw', 'name:zh_TW', 'name:zh'):
-                    priorities[k] = idx; idx += 1
-            else:
-                for k in ('name:zh-Hans', 'name:zh-CN', 'name:zh_cn', 'name:zh_CN', 'name:zh'):
-                    priorities[k] = idx; idx += 1
-        else:
-            priorities[f'name:{lang}'] = idx; idx += 1
-            if region: priorities[f'name:{lang}_{region}'] = idx; idx += 1
-            
-    # 🌐 預設 OSM 標準：絕對優先使用當地原名 (如: 西安路)
-    priorities['name'] = idx; idx += 1
-    
-    # 全球通用備用語言
-    priorities['name:en'] = idx; idx += 1
-    
-    return priorities
+NAME_PRIORITIES = {
+    'name:zh-Hant': 1,
+    'name:zh-TW': 2,
+    'name:zh_TW': 3,
+    'name:zh_tw': 4,
+    'name:zh-Hans': 5,
+    'name:zh-CN': 6,
+    'name:zh_CN': 7,
+    'name:zh': 8,
+    'name': 9,       # OSM global standard local name (prioritized over English, ensures local names don't become English fallback)
+    'name:en': 10    # English as the final fallback
+}
 
-NAME_PRIORITIES = get_universal_lang_priorities()
+# Junk names to filter out ("Unnamed", "Nameless", "Industrial Road", "Path", "Trail", "Forest Road")
+# Kept in original Chinese as they target specific map data tags.
+IGNORE_NAMES = frozenset({
+    "未命名", "無名", "產業道路", "小徑", "步道", "林道"
+})
 
 # ==========================================
 # Constants & Tag Configurations
@@ -81,13 +69,15 @@ POI_TRIGGER_KEYS = frozenset({
     'amenity', 'shop', 'leisure', 'tourism', 'sport', 'historic', 'craft', 'office', 'healthcare'
 })
 
+# 🌲 Ensure landmarks like park, school perfectly return
 VALID_POI_VALUES = frozenset({
     'peak', 'saddle', 'volcano', 'cave_entrance', 'waterfall', 'spring', 
     'toilets', 'drinking_water', 'hospital', 'police', 'shelter',        
     'convenience', 'supermarket', 'fuel', 'camp_site', 'viewpoint', 
     'information', 'alpine_hut', 'guest_house', 'parking', 'station', 
-    'bus_stop', 'guidepost', 'milestone', 'ruins', 'monument', 'city', 
-    'town', 'village', 'hamlet', 'survey_point'
+    'bus_stop', 'guidepost', 'milestone', 'ruins', 'monument', 'historic',                                     
+    'city', 'town', 'village', 'hamlet', 'park', 'school', 'kindergarten', 'university',
+    'survey_point'
 })
 
 DROP_TAG_KEYS = frozenset({
@@ -109,15 +99,6 @@ def format_time(seconds):
     return f"{int(seconds // 60)}m {seconds % 60:.2f}s"
 
 if HAS_JIT:
-    @njit(fastmath=True, cache=True, nogil=True, boundscheck=False)
-    def fast_centroid(pts):
-        n = len(pts)
-        cx, cy = 0.0, 0.0
-        for i in range(n):
-            cx += pts[i, 0]
-            cy += pts[i, 1]
-        return cx / n, cy / n
-        
     @njit(fastmath=True, cache=True, nogil=True, boundscheck=False)
     def is_too_small(pts, threshold):
         if len(pts) < 3: return True
@@ -234,11 +215,11 @@ class WayOptimizer(o.SimpleHandler):
         self.used_node_ids = set()
         self.split_id_counter = -1000000000 
         self.ignore_highway_types = frozenset({'corridor', 'elevator', 'proposed', 'construction', 'abandoned', 'raceway'})
-        self.extracted_pois = 0
         
         self.io_buffer = bytearray()
         self.nodes_io_buffer = bytearray()
         self.FLUSH_LIMIT = 16 * 1024 * 1024 
+        self.extracted_pois = 0
         
         if HAS_JIT:
             self.max_pts_capacity = 40000
@@ -254,7 +235,8 @@ class WayOptimizer(o.SimpleHandler):
         
         parsed_tag_lines = []
         poi_tag_lines = []
-        app_tag, app_poi = parsed_tag_lines.append, poi_tag_lines.append
+        app_tag = parsed_tag_lines.append
+        app_poi = poi_tag_lines.append
         
         best_name = None
         best_name_prio = 999
@@ -264,8 +246,10 @@ class WayOptimizer(o.SimpleHandler):
         loc_drop_prefixes = DROP_TAG_PREFIXES
         loc_ignore_hwy = self.ignore_highway_types
         loc_poi_triggers = POI_TRIGGER_KEYS
+        loc_valid_pois = VALID_POI_VALUES
         loc_watch_tags = WATCH_ALLOWED_TAGS
         loc_name_prios = NAME_PRIORITIES
+        loc_ignore_names = IGNORE_NAMES
         loc_escape = escape_xml_bytes
         loc_ignore_bldgs = IGNORE_BUILDING_VALUES
         
@@ -282,6 +266,9 @@ class WayOptimizer(o.SimpleHandler):
             if k in {'area', 'landcover', 'surface'}: 
                 is_area = True
                 
+            if k in loc_poi_triggers or v in loc_valid_pois:
+                has_poi = True
+                
             if k == 'building':
                 is_area = True
                 if v not in loc_ignore_bldgs:
@@ -289,32 +276,28 @@ class WayOptimizer(o.SimpleHandler):
                     app_tag(b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v)))
                 continue
             
-            is_poi_key = k in loc_poi_triggers
-            is_watch_key = k in loc_watch_tags
-            
             if k in loc_name_prios:
                 prio = loc_name_prios[k]
                 if prio < best_name_prio:
                     best_name_prio, best_name = prio, v
             
-            elif is_poi_key or is_watch_key:
-                esc_k, esc_v = loc_escape(k), loc_escape(v)
-                escaped_line = b'  <tag k="%b" v="%b"/>\n' % (esc_k, esc_v)
-                if is_poi_key:
-                    has_poi = True
-                    app_poi(escaped_line)
-                if is_watch_key:
-                    has_allowed_tag = True
-                    app_tag(escaped_line)
+            elif k in loc_watch_tags or k in loc_poi_triggers:
+                has_allowed_tag = True
+                line = b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v))
+                app_tag(line)
+                if k != 'area':  
+                    app_poi(line)
 
-        if best_name:
+        # Perfectly resolve junk names and prioritize retention
+        if best_name and best_name not in loc_ignore_names:
             name_line = b'  <tag k="name" v="%b"/>\n' % loc_escape(best_name)
-            if has_poi: app_poi(name_line)
-            else: app_tag(name_line)
+            app_tag(name_line)
+            app_poi(name_line)
 
         is_in_relation = w.id in self.relation_ways
         is_polygon = w.is_closed() and (has_allowed_tag or is_area)
-        if not is_in_relation and not parsed_tag_lines and not poi_tag_lines: return
+        
+        if not is_in_relation and not parsed_tag_lines: return
         
         num_nodes = len(w.nodes)
         if num_nodes < 2: return
@@ -346,32 +329,27 @@ class WayOptimizer(o.SimpleHandler):
                     valid_nds.append(n.ref)
             if len(pts) < 2: return
             
-        if is_polygon and has_poi:
+        # 🎯 POI Centroid Extraction: Generate independent icon nodes
+        if is_polygon and has_poi and not is_in_relation:
             if HAS_JIT:
-                center_lon, center_lat = fast_centroid(pts_array)
+                center_lon = np.mean(pts_array[:, 0])
+                center_lat = np.mean(pts_array[:, 1])
             else:
-                sx = sy = 0.0
-                for p in pts:
-                    sx += p[0]; sy += p[1]
-                n = len(pts)
-                center_lon, center_lat = sx / n, sy / n
+                center_lon = sum(p[0] for p in pts) / len(pts)
+                center_lat = sum(p[1] for p in pts) / len(pts)
                 
-            node_id = 20000000000 + w.id 
+            node_id = 20000000000 + w.id
             centroid_xml = [b'<node id="%d" visible="true" version="1" lat="%.5f" lon="%.5f">\n' % (node_id, center_lat, center_lon)]
-            
             if poi_tag_lines: centroid_xml.extend(poi_tag_lines)
-            if best_name: centroid_xml.append(name_line)
             centroid_xml.append(b'</node>\n')
+            
             self.nodes_io_buffer.extend(b"".join(centroid_xml))
             self.extracted_pois += 1
-            
             if len(self.nodes_io_buffer) > self.FLUSH_LIMIT:
                 self.tmp_nodes_f.write(self.nodes_io_buffer)
                 self.nodes_io_buffer.clear()
 
-        if is_polygon and not is_in_relation and not parsed_tag_lines:
-            return 
-            
+        # Filter tiny polygons (this check is placed after centroid extraction to ensure extremely small landmarks still retain POI icons)
         if is_polygon and not is_in_relation:
             if HAS_JIT:
                 if is_too_small(pts_array, 0.00002): return
@@ -379,7 +357,7 @@ class WayOptimizer(o.SimpleHandler):
                 lons, lats = [p[0] for p in pts], [p[1] for p in pts]
                 if (max(lats) - min(lats) < 0.00002) and (max(lons) - min(lons) < 0.00002): return
 
-        current_epsilon = self.base_epsilon * 3.0 if (is_polygon or is_in_relation) else (self.base_epsilon * 0.9 if is_linear else self.base_epsilon)
+        current_epsilon = self.base_epsilon
         
         if HAS_JIT:
             keep_arr = douglas_peucker_fast(pts_array, current_epsilon, self.s_stack_start, self.s_stack_end, self.s_keep)
@@ -441,7 +419,7 @@ class FinalBuilder(o.SimpleHandler):
         self.FLUSH_LIMIT = 32 * 1024 * 1024
         
         self._extend = self.io_buffer.extend
-        self.f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="OSM_Optimizer_V29">\n')
+        self.f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="OSM_Optimizer_V30_Duo">\n')
         self.bounds_pos = self.f.tell()
         self.f.write(b' ' * 120 + b'\n')
 
@@ -464,6 +442,7 @@ class FinalBuilder(o.SimpleHandler):
         loc_valid_pois = VALID_POI_VALUES
         loc_poi_triggers = POI_TRIGGER_KEYS
         loc_name_prios = NAME_PRIORITIES
+        loc_ignore_names = IGNORE_NAMES
         loc_watch_tags = WATCH_ALLOWED_TAGS
         loc_escape = escape_xml_bytes
         
@@ -498,7 +477,7 @@ class FinalBuilder(o.SimpleHandler):
         else:
             self.poi_count += 1
             node_parts = [b'<node id="%d" visible="true" version="1" lat="%.5f" lon="%.5f">\n' % (n_id, lat, lon)]
-            if best_name: 
+            if best_name and best_name not in loc_ignore_names: 
                 node_parts.append(b'  <tag k="name" v="%b"/>\n' % loc_escape(best_name))
             if parsed_tag_lines: node_parts.extend(parsed_tag_lines)
             node_parts.append(b'</node>\n')
@@ -538,6 +517,7 @@ class FinalBuilder(o.SimpleHandler):
         loc_drop_keys = DROP_TAG_KEYS
         loc_drop_prefixes = DROP_TAG_PREFIXES
         loc_name_prios = NAME_PRIORITIES
+        loc_ignore_names = IGNORE_NAMES
         loc_watch_tags = WATCH_ALLOWED_TAGS
         loc_poi_triggers = POI_TRIGGER_KEYS
         loc_ignore_bldgs = IGNORE_BUILDING_VALUES
@@ -562,7 +542,7 @@ class FinalBuilder(o.SimpleHandler):
             elif k in loc_watch_tags or k in loc_poi_triggers:
                 _app(b'  <tag k="%b" v="%b"/>\n' % (loc_escape(k), loc_escape(v)))
                 
-        if best_name: 
+        if best_name and best_name not in loc_ignore_names: 
             _app(b'  <tag k="name" v="%b"/>\n' % loc_escape(best_name))
             
         for m in r.members:
@@ -589,12 +569,7 @@ class FinalBuilder(o.SimpleHandler):
 def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon_deg=0.00003):
     t0 = time.time()
     
-    print(f"🚀 [OSM Optimizer V29.1 True Universal] Started! Input: {input_file}")
-    
-    # 打印當前語系權重陣列供檢查，確保 'name' 權重最高 (數值最小)
-    sorted_prios = sorted(NAME_PRIORITIES.keys(), key=lambda x: NAME_PRIORITIES[x])
-    print(f"   🌍 Target Language Priority: {sorted_prios}")
-    
+    print(f"🚀 [OSM Optimizer V30 Duo - POI Area & Icon Dual Retention Edition] Started! Input: {input_file}")
     if HAS_JIT: print("   ⚡ Numba AVX hardware acceleration engine activated!")
     
     print(f"⏳ [Pass 1] Scanning relation multi-polygon data...")
@@ -602,22 +577,20 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon
     rel_scanner.apply_file(input_file, locations=False)
     gc.collect()
 
-    # 確保 Windows 下產生的暫存檔路徑合法且獨立
     temp_ways_name = tempfile.mktemp(suffix=".w.tmp", dir=os.getcwd())
-    temp_nodes_name = tempfile.mktemp(suffix=".n.tmp", dir=os.getcwd()) 
+    temp_nodes_name = tempfile.mktemp(suffix=".n.tmp", dir=os.getcwd())
     
     print(f"⏳ [Pass 2] Triggering Bytes streaming write and geometry optimization engine...")
     way_opt = WayOptimizer(temp_ways_name, temp_nodes_name, max_nodes_per_way, epsilon_deg, rel_scanner.relation_ways)
     
-    # Windows 對於記憶體映射 (sparse_file_array) 的限制較多，若失敗自動切換為 flex_mem
+    # 🔥 Core fix: Prioritize RAM cache, prevent HDD SWAP thrashing!
     try:
-        way_opt.apply_file(input_file, locations=True, idx='sparse_file_array')
-    except RuntimeError:
         way_opt.apply_file(input_file, locations=True, idx='flex_mem')
+    except RuntimeError:
+        print("⚠️ Insufficient memory, downgraded to HDD cache (speed will decrease)...")
+        way_opt.apply_file(input_file, locations=True, idx='sparse_file_array')
         
     way_opt.close()
-    
-    print(f"   => Successfully extracted {way_opt.extracted_pois:,} polygon centroids as standalone POIs!")
     
     gc.collect()
     print(f"⏳ [Pass 3] Executing seamless merge and final write (Garbage Collection disabled for sprint)...")
@@ -629,16 +602,15 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=50, epsilon
     
     gc.enable() 
     
-    # 安全清理 Windows 暫存檔
-    for tmp in [temp_ways_name, temp_nodes_name]:
-        if os.path.exists(tmp):
+    for tmp_file in [temp_ways_name, temp_nodes_name]:
+        if os.path.exists(tmp_file):
             try:
-                os.remove(tmp)
+                os.remove(tmp_file)
             except OSError:
                 pass
     
     print(f"🎉 Map core optimization complete! Total time: {format_time(time.time() - t0)}")
-    print(f"   📊 Stats: Kept nodes {len(way_opt.used_node_ids):,} | POI landmarks {final_builder.poi_count:,} | Centroid conversions {way_opt.extracted_pois:,}")
+    print(f"   📊 Stats: Kept nodes {len(way_opt.used_node_ids):,} | POI landmarks {final_builder.poi_count:,} | Centroids Extracted {way_opt.extracted_pois:,} | Relations {final_builder.rel_count:,}")
     print(f"   📁 Output file: {output_file} (Size: {os.path.getsize(output_file)/(1024*1024):.2f} MB)")
 
 if __name__ == "__main__":
