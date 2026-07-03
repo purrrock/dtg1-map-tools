@@ -1,0 +1,6 @@
+lxml==6.1.1
+matplotlib==3.11.0
+numba==0.65.1
+numpy==2.5.0
+osmium==4.3.1
+pyshp==3.1.4
