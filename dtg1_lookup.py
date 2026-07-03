@@ -8,9 +8,9 @@ class HWConstants:
 
 class LookupTables:
     """
-    Таблицы стилей (LUT) и реестры маршрутизации для парсера.
-    Включает хэш-таблицы для Advanced Key-Value Tag Routing и 
-    изоляцию реестров Blacklist по слоям (Namespace Collisions prevention).
+    Look-Up Tables (LUT) and routing registries for the parser.
+    Includes hash tables for Advanced Key-Value Tag Routing and
+    layer-isolated Blacklist registries (Namespace Collisions prevention).
     """
     HIGHWAY_CODES: Dict[str, int] = {}
     POLYGON_CODES: Dict[str, int] = {}
@@ -18,7 +18,7 @@ class LookupTables:
     DISPLAY_SCALES: Dict[int, int] = {}
     POI_SHAPES: Dict[str, str] = {}
     
-    # Изоляция реестров Blacklist по слоям (Software Culling)
+    # Isolation of Blacklist registries by layer (Software Culling)
     DISABLED_ROADS: Set[str] = set()
     DISABLED_LANDUSE: Set[str] = set()
     DISABLED_POIS: Set[str] = set()
@@ -35,20 +35,20 @@ class LookupTables:
     @classmethod
     def load_from_csv(cls, filepath: str = "features.csv") -> None:
         """
-        Метод парсинга конфигурации маршрутизации (LUT).
-        Выполняет загрузку правил маппинга, заполнение таблиц для Early Exit
-        и динамическую привязку алиасов (LOD/Цвет/Шейп).
+        Method for parsing the routing configuration (LUT).
+        Loads mapping rules, populates tables for Early Exit
+        and dynamically binds aliases (LOD/Color/Shape).
         """
-        print(f"[>] Загрузка таблицы стилей LUT из {filepath}...")
+        print(f"[>] Loading LUT style table from {filepath}...")
         
         try:
             with open(filepath, mode="r", encoding="utf-8") as f:
                 reader = csv.reader(f, delimiter=";")
-                next(reader, None)  # Пропуск заголовка
+                next(reader, None)  # Skip header
                 
                 loaded_records = 0
                 for row in reader:
-                    # Проверка минимальной длины строки конфигурации
+                    # Check minimum length of configuration string
                     if len(row) < 11:
                         continue
                         
@@ -57,8 +57,8 @@ class LookupTables:
                     osm_tag = row[5].strip()
                     enabled_flag = row[10].strip().lower()
                     
-                    # === Механизм Software Culling (Early Exit парсинг) ===
-                    # Изоляция реестров для предотвращения Namespace Collisions
+                    # === Software Culling Mechanism (Early Exit parsing) ===
+                    # Isolate registries to prevent Namespace Collisions
                     if enabled_flag in ("0", "false", "no", "off", ""):
                         if layer == "roads":
                             cls.DISABLED_ROADS.add(fclass)
@@ -71,7 +71,7 @@ class LookupTables:
                         continue
                         
                     # === Advanced Key-Value Tag Routing ===
-                    # Парсинг сложных OSM тегов (например, amenity=hospital, place=city)
+                    # Parsing complex OSM tags (e.g. amenity=hospital, place=city)
                     if osm_tag and "=" in osm_tag:
                         for tag_pair in osm_tag.split(","):
                             if "=" in tag_pair:
@@ -80,14 +80,14 @@ class LookupTables:
                                     cls.TAG_ROUTING[layer] = {}
                                 cls.TAG_ROUTING[layer][(k.strip(), v.strip())] = fclass
                                 
-                    # Парсинг параметров ремаппинга (аппаратные ID и уровни SQT-индексации)
+                    # Parsing remapping parameters (hardware IDs and SQT indexation levels)
                     try:
                         remap_code = int(row[7].strip())
                         remap_lod = int(row[9].strip())
                     except ValueError:
                         continue
                         
-                    # === Заполнение таблиц LUT для генератора бинарных графов ===
+                    # === Populating LUT tables for the binary graph generator ===
                     if layer == "roads":
                         cls.HIGHWAY_CODES[fclass] = remap_code
                         cls.DISPLAY_SCALES[remap_code] = remap_lod
@@ -97,22 +97,22 @@ class LookupTables:
                     elif layer == "pois":
                         cls.POI_CODES[fclass] = remap_code
                         cls.DISPLAY_SCALES[remap_code] = remap_lod
-                        # Fallback-механизм для отсутствующего шейпа POI
+                        # Fallback mechanism for missing POI shape
                         shape_val = row[11].strip().lower() if len(row) > 11 else "rhombus"
                         cls.POI_SHAPES[fclass] = shape_val if shape_val else "rhombus"
                         
                     loaded_records += 1
                     
-            print(f"    Успешно импортировано правил: {loaded_records}")
-            print(f"[i] LUT загружен. Дороги: {len(cls.HIGHWAY_CODES)}, Полигоны: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
+            print(f"    Successfully imported rules: {loaded_records}")
+            print(f"[i] LUT loaded. Roads: {len(cls.HIGHWAY_CODES)}, Polygons: {len(cls.POLYGON_CODES)}, POI: {len(cls.POI_CODES)}")
             
-            # Страховка для водного слоя (должен присутствовать в LOD2)
+            # Failsafe for the water layer (must be present in LOD2)
             if HWConstants.WATER_CODE not in cls.DISPLAY_SCALES:
                 cls.DISPLAY_SCALES[HWConstants.WATER_CODE] = 1000
                 
         except FileNotFoundError:
-            print(f"[-] Ошибка: Файл конфигурации LUT {filepath} не найден.")
+            print(f"[-] Error: LUT configuration file {filepath} not found.")
             sys.exit(1)
         except Exception as e:
-            print(f"[-] Критическая ошибка парсинга {filepath}: {e}")
+            print(f"[-] Critical error parsing {filepath}: {e}")
             sys.exit(1)

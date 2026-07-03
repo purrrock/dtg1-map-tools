@@ -88,27 +88,27 @@ class WayOptimizer(o.SimpleHandler):
     def __init__(self, temp_ways_file, temp_nodes_file, max_nodes_per_way, epsilon_deg):
         super().__init__()
         self.tmp_f = open(temp_ways_file, 'wb')
-        self.tmp_nodes_f = open(temp_nodes_file, 'wb') # Временный файл для виртуальных узлов
+        self.tmp_nodes_f = open(temp_nodes_file, 'wb') # Temporary file for virtual nodes
         self.max_nodes = max_nodes_per_way
         self.epsilon_deg = epsilon_deg
 
         self.used_node_ids = set()
         self.ways_count = 0
-        self.converted_pois_count = 0 # Счетчик извлеченных POI
+        self.converted_pois_count = 0 # Extracted POI counter
 
-        # Триггеры на удаление объекта
+        # Triggers for object deletion
         self.drop_way_triggers = {'building', 'power'}
-        # Безусловное удаление (коридоры внутри зданий)
+        # Unconditional deletion (corridors inside buildings)
         self.drop_way_kv = {'highway': {'corridor', 'elevator'}}
         
-        # Ключи выживания (если геометрия нужна компилятору)
+        # Survival keys (if geometry is needed by compiler)
         self.survival_keys = {
             'landuse', 'natural', 'amenity', 'leisure', 'tourism', 
             'shop', 'sport', 'highway', 'waterway', 'barrier',
             'railway', 'aeroway', 'man_made', 'historic', 'route'
         }
 
-        # [НОВОЕ] Ключи, маркирующие объект как Point of Interest
+        # [NEW] Keys marking an object as a Point of Interest
         self.poi_keys = {
             'amenity', 'shop', 'leisure', 'tourism', 'sport', 
             'historic', 'craft', 'office', 'healthcare', 'emergency'
@@ -130,30 +130,30 @@ class WayOptimizer(o.SimpleHandler):
         valid_tags = []
 
         for tag in w.tags:
-            # 1. Безусловные фатальные совпадения
+            # 1. Unconditional fatal matches
             if tag.k in self.drop_way_kv and tag.v in self.drop_way_kv[tag.k]:
                 return 
 
-            # 2. Триггеры возможного удаления (building, power)
+            # 2. Triggers for possible deletion (building, power)
             if tag.k in self.drop_way_triggers:
                 has_drop_trigger = True
                 
-            # 3. Триггеры выживания 
+            # 3. Survival triggers
             if tag.k in self.survival_keys:
                 has_survival_tag = True
 
-            # 4. Триггеры POI
+            # 4. POI triggers
             if tag.k in self.poi_keys:
                 has_poi_tag = True
 
             if tag.k == 'highway':
                 is_linear_highway = True
 
-            # 5. Сбор чистых тегов (за исключением мусора)
+            # 5. Collect clean tags (excluding garbage)
             if tag.k not in self.drop_tag_keys and not tag.k.startswith(self.drop_tag_prefixes):
                 valid_tags.append((tag.k, tag.v))
 
-        # Собираем геометрию
+        # Collect geometry
         pts = []
         valid_nds = []
         for n in w.nodes:
@@ -163,18 +163,18 @@ class WayOptimizer(o.SimpleHandler):
             except o.InvalidLocationError:
                 pass
 
-        # Если геометрия битая или тегов не осталось — удаляем полностью
+        # If geometry is broken or no tags left — remove completely
         if not valid_tags or len(pts) == 0:
             return
 
-        # [НОВОЕ] Извлечение POI (Centroid Injection)
-        # Если это здание и в нем заложен POI-объект (магазин, храм и т.д.)
+        # [NEW] POI Extraction (Centroid Injection)
+        # If this is a building and it contains a POI object (shop, temple, etc.)
         if has_drop_trigger and has_poi_tag:
-            # Вычисляем математический центроид здания
+            # Calculate the mathematical centroid of the building
             center_lon = sum(p[0] for p in pts) / len(pts)
             center_lat = sum(p[1] for p in pts) / len(pts)
             
-            # Смещение ID на 20 миллиардов гарантирует отсутствие коллизий
+            # ID offset by 20 billion guarantees no collisions
             node_id = 20000000000 + w.id
             xml_str = f'  <node id="{node_id}" version="1" visible="true" lat="{center_lat:.6f}" lon="{center_lon:.6f}">\n'
             
@@ -185,15 +185,15 @@ class WayOptimizer(o.SimpleHandler):
             
             self.tmp_nodes_f.write(xml_str.encode('utf-8'))
             self.converted_pois_count += 1
-            # Прерываем обработку: мы спасли объект как точку, сам полигон-здание нам больше не нужен.
+            # Interrupt processing: we saved the object as a point, we no longer need the building polygon itself.
             return
 
-        # Старая логика: Удаляем объект ТОЛЬКО если у него сработал триггер (например, building), 
-        # но при этом нет ни одного ценного тега.
+        # Old logic: Delete the object ONLY if it triggered (e.g., building),
+        # but at the same time it does not have a single valuable tag.
         if has_drop_trigger and not has_survival_tag:
             return
 
-        # ---- Логика чанкинга и записи линий (way) ----
+        # ---- Logic for chunking and writing lines (way) ----
         is_polygon = w.is_closed() and not is_linear_highway
         simplified_nds = valid_nds
         simplified_pts = pts
@@ -241,7 +241,7 @@ class WayOptimizer(o.SimpleHandler):
 
 
 def clean_element_metadata(elem):
-    """ Очистка мусорных метаданных и тегов для Node и Relation """
+    """ Cleaning garbage metadata and tags for Node and Relation """
     for attr in ['timestamp', 'changeset', 'uid', 'user']:
         elem.attrib.pop(attr, None)
         
@@ -308,19 +308,19 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
 
                 elif elem.tag in ('way', 'relation'):
                     if not ways_written:
-                        # Строго по стандарту OSM: сперва сливаем сгенерированные виртуальные узлы (Nodes)
+                        # Strictly according to the OSM standard: first merge the generated virtual nodes (Nodes)
                         print(f"    ... Injecting extracted POI nodes...")
                         with open(temp_nodes_name, 'rb') as tn:
                             shutil.copyfileobj(tn, out)
                             
-                        # Затем сливаем оптимизированные полигоны (Ways)
+                        # Then merge optimized polygons (Ways)
                         print(f"    ... Seamlessly merging optimized ways...")
                         with open(temp_ways_name, 'rb') as tw:
                             shutil.copyfileobj(tw, out)
                             
                         ways_written = True
 
-                    # Если это relation — пишем его в хвост (уже после внедрения наших темп-файлов)
+                    # If this is a relation — write it to the tail (after introducing our temp files)
                     if elem.tag == 'relation':
                         clean_element_metadata(elem)
                         if len(elem.findall('tag')) > 0:
@@ -330,7 +330,7 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
                     elem.clear()
                     root.clear()
 
-        # Fallback (если в файле отсутствовали way и relation)
+        # Fallback (if the file didn't contain way and relation)
         if not ways_written:
             with open(temp_nodes_name, 'rb') as tn:
                 shutil.copyfileobj(tn, out)

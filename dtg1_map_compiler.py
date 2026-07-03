@@ -22,10 +22,10 @@ from dtg1_lookup import LookupTables
 
 def get_base_directory() -> str:
     """
-    Определяет базовую директорию выполнения программы.
-    Критично для работы гибридного дистрибутива: 
-    - sys.frozen детектирует среду PyInstaller (.exe)
-    - __file__ используется для исходного кода (.py)
+    Determines the base directory for program execution.
+    Critical for the hybrid distribution to function:
+    - sys.frozen detects the PyInstaller (.exe) environment
+    - __file__ is used for the source code (.py)
     """
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
@@ -40,7 +40,7 @@ def main():
     )
     args = cli_parser.parse_args()
 
-    # Инициализация аппаратно-независимых путей
+    # Initialize hardware-independent paths
     base_dir = get_base_directory()
     map_osm_path = os.path.join(base_dir, "map.osm")
     features_csv_path = os.path.join(base_dir, "features.csv")
@@ -90,7 +90,7 @@ def main():
             print(f"[~] Directory '{routes_dir_path}/' is empty. No GPX tracks to inject.")
             
     # 4. Serialize Layers
-    # Вспомогательная лямбда для маршрутизации выходных бинарных файлов в базовую директорию
+    # Helper lambda to route output binary files to the base directory
     out_path = lambda filename: os.path.join(base_dir, filename)
 
     meta_all: List[MapFeature] = []
@@ -125,7 +125,7 @@ def main():
         MapCompiler.compile_idx(landuse_only, out_path("landuse.idx"))
         meta_all.extend(landuse_only)
     else:
-        # Передаем абсолютный префикс в метод создания пустого слоя
+        # Pass the absolute prefix to the empty layer creation method
         MapCompiler.create_empty_layer(out_path("landuse"))
 
     if water_only:

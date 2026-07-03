@@ -5,27 +5,27 @@ import math
 import datetime
 
 # ==========================================
-# КОНСТАНТЫ ГЕОМЕТРИИ И КООРДИНАТ
+# GEOMETRY AND COORDINATE CONSTANTS
 # ==========================================
-# Базовые координаты (центр стартового полигона)
+# Base coordinates (center of the starting polygon)
 LAT_CENTER = 53.70509
 LON_CENTER = 28.419233
 
 EARTH_RADIUS = 6378137.0
 
-# Базовый радиус/смещение для геометрии фигур
+# Base radius/offset for shape geometry
 R = 6.0
 
-# Скорректированный множитель оси Y для компенсации перспективы
+# Adjusted Y-axis multiplier for perspective compensation
 PERSPECTIVE_Y_MULTIPLIER = 1.5
 
-# Расстояние между центрами фигур в матрице
+# Distance between shape centers in the matrix
 SPACING_METERS = 20.0
 
 OUTPUT_FILENAME = "shapes_test_grid_v2.osm"
 
 # ==========================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# AUXILIARY FUNCTIONS
 # ==========================================
 
 def meters_to_lat_delta(meters):
@@ -36,148 +36,148 @@ def meters_to_lon_delta(meters, latitude):
     return (meters / (EARTH_RADIUS * math.cos(lat_rad))) * (180.0 / math.pi)
 
 # ==========================================
-# ОПРЕДЕЛЕНИЕ ГЕОМЕТРИИ ФИГУР (МЕТРЫ)
-# Обход: Строго по часовой стрелке (CW)
+# DEFINITION OF SHAPE GEOMETRY (METERS)
+# Traversal: Strictly clockwise (CW)
 # ==========================================
 
 def get_shapes_definitions():
     shapes = {}
 
-    # 1. Ромб (вытянут по вертикали)
+    # 1. Rhombus (stretched vertically)
     shapes["Rhombus"] = [(0, R * 1.4), (R, 0), (0, -R * 1.4), (-R, 0), (0, R * 1.4)]
 
-    # 2. Треугольник
+    # 2. Triangle
     shapes["Triangle"] = [(0, R), (R, -R), (-R, -R), (0, R)]
 
-    # 3. Домик
+    # 3. House
     shapes["House"] = [(0, R + 2), (R, R - 3), (R, -R), (-R, -R), (-R, R - 3), (0, R + 2)]
 
-    # 4. Чашка (Прямоугольник со скошенными нижними углами)
-    # Фаска (chamfer) начинается на высоте 2.5 метра от нижней грани.
+    # 4. Cup (Rectangle with chamfered bottom corners)
+    # Chamfer starts at a height of 2.5 meters from the bottom edge.
     shapes["Cup"] = [
-        (-R, R),          # Левый верхний угол
-        (R, R),           # Правый верхний угол
-        (R, -R + 2.5),    # Начало правого скоса (вертикальный спуск)
-        (R - 2.5, -R),    # Конец правого скоса (переход в основание)
-        (-R + 2.5, -R),   # Конец левого скоса (основание)
-        (-R, -R + 2.5),   # Начало левого скоса (подъем)
-        (-R, R)           # Замыкание контура
+        (-R, R),          # Top left corner
+        (R, R),           # Top right corner
+        (R, -R + 2.5),    # Start of right chamfer (vertical descent)
+        (R - 2.5, -R),    # End of right chamfer (transition to base)
+        (-R + 2.5, -R),   # End of left chamfer (base)
+        (-R, -R + 2.5),   # Start of left chamfer (ascent)
+        (-R, R)           # Closing contour
     ]
     
-    # 5. Крест ("Жирный", толщина перекладин 4м вместо 2м для читаемости на экране)
+    # 5. Cross ("Fat", bar thickness 4m instead of 2m for readability on screen)
     shapes["Cross"] = [
         (-2, R), (2, R), (2, 2), (R, 2), (R, -2), (2, -2),
         (2, -R), (-2, -R), (-2, -2), (-R, -2), (-R, 2), (-2, 2), (-2, R)
     ]
 
-    # 6. Пиктограмма: Туалет (Стилизованные "песочные часы" / два встречных треугольника)
-    # Во избежание аппаратных багов заливки самопересекающихся полигонов,
-    # центральная точка (перешеек) расширена до 1 метра по оси X.
+    # 6. Pictogram: Toilet (Stylized "hourglass" / two facing triangles)
+    # To avoid hardware bugs with filling self-intersecting polygons,
+    # the central point (isthmus) is widened to 1 meter along the X axis.
     shapes["Toilet"] = [
-        (-R, R),           # Левый верхний угол
-        (R, R),            # Правый верхний угол
-        (0.5, 0),          # Правая сторона перешейка (центр)
-        (R, -R),           # Правый нижний угол
-        (-R, -R),          # Левый нижний угол
-        (-0.5, 0),         # Левая сторона перешейка (центр)
-        (-R, R)            # Замыкание контура
+        (-R, R),           # Top left corner
+        (R, R),            # Top right corner
+        (0.5, 0),          # Right side of the isthmus (center)
+        (R, -R),           # Bottom right corner
+        (-R, -R),          # Bottom left corner
+        (-0.5, 0),         # Left side of the isthmus (center)
+        (-R, R)            # Closing contour
     ]
 
-    # 7. Пиктограмма: Транспорт (Профиль автобуса)
-    # Увеличен угол скоса лобового стекла. Колесные арки смещены к центру.
+    # 7. Pictogram: Transport (Bus profile)
+    # Increased windshield slant angle. Wheel arches are shifted to the center.
     shapes["Transport"] = [
-        (-R, R - 1), (R - 3, R - 1),           # Крыша автобуса (укорочена)
-        (R, R - 3.0), (R, -R),                   # Лобовое стекло (скос) и передний бампер
-        (R - 2.0, -R), (R - 2.0, -R + 1.5),      # Передняя колесная арка (правая грань)
-        (R - 4.0, -R + 1.5), (R - 4.0, -R),      # Передняя колесная арка (левая грань)
-        (-R + 4.0, -R), (-R + 4.0, -R + 1.5),    # Задняя колесная арка (правая грань)
-        (-R + 2.0, -R + 1.5), (-R + 2.0, -R),    # Задняя колесная арка (левая грань)
-        (-R, -R), (-R, R - 1)                    # Задний бампер и замыкание
+        (-R, R - 1), (R - 3, R - 1),           # Bus roof (shortened)
+        (R, R - 3.0), (R, -R),                   # Windshield (slant) and front bumper
+        (R - 2.0, -R), (R - 2.0, -R + 1.5),      # Front wheel arch (right edge)
+        (R - 4.0, -R + 1.5), (R - 4.0, -R),      # Front wheel arch (left edge)
+        (-R + 4.0, -R), (-R + 4.0, -R + 1.5),    # Rear wheel arch (right edge)
+        (-R + 2.0, -R + 1.5), (-R + 2.0, -R),    # Rear wheel arch (left edge)
+        (-R, -R), (-R, R - 1)                    # Rear bumper and closure
     ]
 
-    # 8. Пиктограмма: Магазин (Стилизованная тележка / прямоугольная трапеция)
-    # Левая грань строго вертикальна, правая образует скос.
+    # 8. Pictogram: Shop (Stylized cart / rectangular trapezoid)
+    # Left edge is strictly vertical, right edge forms a slant..
     shapes["Shop"] = [
-        (-R, R),          # Левый верхний угол (задняя стенка тележки)
-        (R, R),           # Правый верхний угол (передний край корзины)
-        (R - 2.5, -R),    # Правый нижний угол (конец скошенной передней стенки)
-        (-R, -R),         # Левый нижний угол (база задней стенки, прямой угол)
-        (-R, R)           # Замыкание контура
+        (-R, R),          # Top left corner (back wall of cart)
+        (R, R),           # Top right corner (front edge of basket)
+        (R - 2.5, -R),    # Bottom right corner (end of slanted front wall)
+        (-R, -R),         # Bottom left corner (base of back wall, right angle)
+        (-R, R)           # Closing contour
     ]
     
-    # 9. Пиктограмма: Достопримечательность (Башня с тремя острыми зубцами)
-    # Зубцы имеют треугольную форму. Количество вершин сокращено для оптимизации.
+    # 9. Pictogram: Landmark (Tower with three sharp teeth)
+    # Teeth have a triangular shape. Number of vertices reduced for optimization.
     shapes["Attraction"] = [
-        (-R, R),             # Левый пик (острый зубец)
-        (-2.5, R - 2.0),     # Левая V-образная впадина
-        (0.0, R),            # Центральный пик
-        (2.5, R - 2.0),      # Правая V-образная впадина
-        (R, R),              # Правый пик
-        (R, -R),             # Правый нижний угол основания
-        (-R, -R),            # Левый нижний угол основания
-        (-R, R)              # Замыкание контура
+        (-R, R),             # Left peak (sharp tooth)
+        (-2.5, R - 2.0),     # Left V-shaped depression
+        (0.0, R),            # Central peak
+        (2.5, R - 2.0),      # Right V-shaped depression
+        (R, R),              # Right peak
+        (R, -R),             # Bottom right corner of base
+        (-R, -R),            # Bottom left corner of base
+        (-R, R)              # Closing contour
     ]
     
-    # 10. Пиктограмма: Велосипед
+    # 10. Pictogram: Bicycle
     shapes["Bicycle"] = [
-        (-7.5, 1.5),         # Левый 8-гранник: левая прямая грань (верх)
-        (-5.25, 4.0),        # Левый 8-гранни1.5к: верхняя-левая фаска
-        (-1.5, 4.0),        # Левый 8-гранник: верхняя прямая грань
-        (0.0, 1.5),         # Точка пересечения верхних диагоналей (впадина)
-        (1.5, 4.0),         # Правый 8-гранник: верхняя прямая грань (начало)
-        (5.25, 4.0),         # Правый 8-гранник: верхняя прямая грань (конец)
-        (7.5, 1.5),          # Правый 8-гранник: верхняя-правая фаска
-        (7.5, -1.5),         # Правый 8-гранник: правая прямая грань
-        (5.25, -4.0),        # Правый 8-гранник: нижняя-правая фаска
-        (1.5, -4.0),        # Правый 8-гранник: нижняя прямая грань
-        (0.0, -1.5),        # Точка пересечения нижних диагоналей (впадина)
-        (-1.5, -4.0),       # Левый 8-гранник: нижняя прямая грань (конец)
-        (-5.25, -4.0),       # Левый 8-гранник: нижняя прямая грань (начало)
-        (-7.5, -1.5),        # Левый 8-гранник: нижняя-левая фаска
-        (-7.5, 1.5)          # Замыкание контура
+        (-7.5, 1.5),         # Left octagon: left straight edge (top)
+        (-5.25, 4.0),        # Left octagon: top-left chamfer
+        (-1.5, 4.0),        # Left octagon: top straight edge
+        (0.0, 1.5),         # Intersection point of top diagonals (depression)
+        (1.5, 4.0),         # Right octagon: top straight edge (start)
+        (5.25, 4.0),         # Right octagon: top straight edge (end)
+        (7.5, 1.5),          # Right octagon: top-right chamfer
+        (7.5, -1.5),         # Right octagon: right straight edge
+        (5.25, -4.0),        # Right octagon: bottom-right chamfer
+        (1.5, -4.0),        # Right octagon: bottom straight edge
+        (0.0, -1.5),        # Intersection point of bottom diagonals (depression)
+        (-1.5, -4.0),       # Left octagon: bottom straight edge (end)
+        (-5.25, -4.0),       # Left octagon: bottom straight edge (start)
+        (-7.5, -1.5),        # Left octagon: bottom-left chamfer
+        (-7.5, 1.5)          # Closing contour
     ]
 
-    # 11. Пиктограмма: Душ
+    # 11. Pictogram: Shower
     shapes["Shower"] = [
-        (0.0, R),      # Апекс (вершина) треугольника
-        (5, 1.5),          # Правый угол треугольника
-        (-0.75, 1.5),        # Внутренний правый угол стойки
-        (-0.75, -R),   # Правый нижний угол стойки
-        (-5, -R),    # Левый нижний угол стойки
-        (-5, 1.5),         # Левый край стойки / Левый угол треугольника
-        (0.0, R)       # Замыкание контура
+        (0.0, R),      # Apex (top) of triangle
+        (5, 1.5),          # Right angle of triangle
+        (-0.75, 1.5),        # Inner right corner of stand
+        (-0.75, -R),   # Bottom right corner of stand
+        (-5, -R),    # Bottom left corner of stand
+        (-5, 1.5),         # Left edge of stand / Left angle of triangle
+        (0.0, R)       # Closing contour
     ]
 
-    # 12. Пиктограмма: Запрет (Диагональный крест)
-    # Параметр смещения 'c' увеличен до 3.5 для утолщения лучей.
-    # Фактическая толщина луча: 2 * 3.5 * cos(45) = 4.94 м. 12 вершин.
+    # 12. Pictogram: Ban (Diagonal cross)
+    # Offset parameter 'c' increased to 3.5 to thicken the rays.
+    # Actual ray thickness: 2 * 3.5 * cos(45) = 4.94 m. 12 vertices.
     c = 3
     shapes["Barrier"] = [
-        (0.0, c),            # Верхняя внутренняя впадина (пересечение лучей)
-        (R - c, R),          # Левая верхняя точка правого луча (скос)
-        (R, R - c),          # Правая верхняя точка правого луча
-        (c, 0.0),            # Правая внутренняя впадина
-        (R, -R + c),         # Правая нижняя точка правого луча
-        (R - c, -R),         # Левая нижняя точка правого луча (скос)
-        (0.0, -c),           # Нижняя внутренняя впадина
-        (-R + c, -R),        # Правая нижняя точка левого луча
-        (-R, -R + c),        # Левая нижняя точка левого луча
-        (-c, 0.0),           # Левая внутренняя впадина
-        (-R, R - c),         # Левая верхняя точка левого луча
-        (-R + c, R),         # Правая верхняя точка левого луча (скос)
-        (0.0, c)             # Замыкание контура
+        (0.0, c),            # Top inner depression (ray intersection)
+        (R - c, R),          # Top left point of right ray (slant)
+        (R, R - c),          # Top right point of right ray
+        (c, 0.0),            # Right inner depression
+        (R, -R + c),         # Bottom right point of right ray
+        (R - c, -R),         # Bottom left point of right ray (slant)
+        (0.0, -c),           # Bottom inner depression
+        (-R + c, -R),        # Bottom right point of left ray
+        (-R, -R + c),        # Bottom left point of left ray
+        (-c, 0.0),           # Left inner depression
+        (-R, R - c),         # Top left point of left ray
+        (-R + c, R),         # Top right point of left ray (slant)
+        (0.0, c)             # Closing contour
     ]
     return shapes
 
 # ==========================================
-# ГЕНЕРАЦИЯ OSM XML 
+# OSM XML GENERATION
 # ==========================================
 
 def generate_shapes_osm():
     timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     shapes_defs = get_shapes_definitions()
     
-    # Массив ключей вывода (12 фигур)
+    # Array of output keys (12 shapes)
     shape_names = [
         "Rhombus", "Triangle", "House", 
         "Cup", "Cross", "Toilet", 
@@ -199,7 +199,7 @@ def generate_shapes_osm():
         if name not in shapes_defs:
             continue
             
-        # Матричное проецирование
+        # Matrix projection
         row = i // 4  
         col = i % 4   
         
@@ -214,7 +214,7 @@ def generate_shapes_osm():
         way_nodes = []
         
         for x_offset, y_offset in rel_coords:
-            # Аппаратная компенсация перспективы (уменьшена до 1.5)
+            # Hardware perspective compensation (reduced to 1.5)
             y_offset_stretched = y_offset * PERSPECTIVE_Y_MULTIPLIER
             
             lat_d = meters_to_lat_delta(y_offset_stretched)

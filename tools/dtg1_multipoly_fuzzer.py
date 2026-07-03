@@ -4,9 +4,9 @@
 """
 DT G1 Multipolygon Fuzzer
 =========================
-Генератор сложных топологических структур для тестирования массива 'parts' 
-в формате бинарной геометрии .mlp.
-Создает два мультиполигона: Лес с поляной (дыркой) и Озеро с островом.
+Generator of complex topological structures for testing the 'parts' array
+in binary geometry .mlp format.
+Creates two multipolygons: Forest with a clearing (hole) and Lake with an island.
 """
 
 import math
@@ -18,10 +18,10 @@ def main():
     METER_PER_LAT = 111320.0
     METER_PER_LON = 111320.0 * math.cos(math.radians(LAT_CENTER))
 
-    # Настройки геометрии
-    OUTER_SIZE = 150.0  # Внешний квадрат 150х150 метров
-    INNER_SIZE = 50.0   # Внутренняя дырка 50х50 метров
-    OFFSET = 150.0      # Смещение от центра для объектов (вправо/влево)
+    # Geometry settings
+    OUTER_SIZE = 150.0  # Outer square 150x150 meters
+    INNER_SIZE = 50.0   # Inner hole 50x50 meters
+    OFFSET = 150.0      # Offset from center for objects (right/left)
 
     osm_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -33,7 +33,7 @@ def main():
     global_rel_id = 5000
 
     def create_ring(lat_c, lon_c, size_m):
-        """Генерирует 4 узла и замкнутый way (кольцо). Возвращает ID созданного way."""
+        """Generates 4 nodes and a closed way (ring). Returns ID of created way."""
         nonlocal global_node_id, global_way_id
         
         half_lat = (size_m / 2.0) / METER_PER_LAT
@@ -42,7 +42,7 @@ def main():
         min_lat, max_lat = lat_c - half_lat, lat_c + half_lat
         min_lon, max_lon = lon_c - half_lon, lon_c + half_lon
 
-        # Генерируем 4 узла
+        # Generating 4 nodes
         n1 = global_node_id; global_node_id += 1
         n2 = global_node_id; global_node_id += 1
         n3 = global_node_id; global_node_id += 1
@@ -55,7 +55,7 @@ def main():
             f'  <node id="{n4}" lat="{min_lat:.7f}" lon="{max_lon:.7f}" version="1"/>'
         ])
 
-        # Замыкаем в way (без тегов! Теги будут в relation)
+        # Closing in way (without tags! Tags will be in relation)
         w_id = global_way_id
         global_way_id += 1
         
@@ -65,15 +65,15 @@ def main():
             f'    <nd ref="{n2}"/>',
             f'    <nd ref="{n3}"/>',
             f'    <nd ref="{n4}"/>',
-            f'    <nd ref="{n1}"/>', # Замыкание кольца
+            f'    <nd ref="{n1}"/>', # Closing the ring
             f'  </way>'
         ])
         return w_id
 
-    print("[>] Генерация мультиполигонов (Лес и Озеро)...")
+    print("[>] Generating multipolygons (Forest and Lake)...")
 
     # ==========================================
-    # ОБЪЕКТ 1: ЛЕС С ОТВЕРСТИЕМ (Слева от центра)
+    # OBJECT 1: FOREST WITH HOLE (Left of center)
     # ==========================================
     forest_lon = LON_CENTER - (OFFSET / METER_PER_LON)
     forest_outer_way = create_ring(LAT_CENTER, forest_lon, OUTER_SIZE)
@@ -91,7 +91,7 @@ def main():
     global_rel_id += 1
 
     # ==========================================
-    # ОБЪЕКТ 2: ОЗЕРО С ОСТРОВОМ (Справа от центра)
+    # OBJECT 2: LAKE WITH ISLAND (Right of center)
     # ==========================================
     lake_lon = LON_CENTER + (OFFSET / METER_PER_LON)
     lake_outer_way = create_ring(LAT_CENTER, lake_lon, OUTER_SIZE)
@@ -112,7 +112,7 @@ def main():
     with open("map.osm", "w", encoding="utf-8") as f:
         f.write("\n".join(osm_lines))
 
-    print("[+] Сгенерирован map.osm (2 relation, 4 ways, 16 nodes).")
+    print("[+] Generated map.osm (2 relations, 4 ways, 16 nodes).")
 
 if __name__ == "__main__":
     main()
