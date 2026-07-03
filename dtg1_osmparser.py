@@ -25,7 +25,11 @@ _STOP_WORDS = (
     "ул.", "пер.", "пл.", "st.", "rd.", "ln.", "dr.", "sq.", "way", "pl."
 )
 
-_STOP_WORDS_RX = re.compile(r"^(" + "|".join(re.escape(w) for w in _STOP_WORDS) + r")\s+(.*)$", re.IGNORECASE)
+_sorted_stop_words = sorted(_STOP_WORDS, key=len, reverse=True)
+_STOP_WORDS_RX = re.compile(
+    r"^(" + "|".join(re.escape(w) for w in _sorted_stop_words) + r")\s*(.*)$",
+    re.IGNORECASE
+)
 
 
 class GPXParser:
