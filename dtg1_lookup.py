@@ -1,4 +1,3 @@
-import os
 import sys
 import csv
 from typing import Dict, Tuple, Set
@@ -40,10 +39,6 @@ class LookupTables:
         Выполняет загрузку правил маппинга, заполнение таблиц для Early Exit
         и динамическую привязку алиасов (LOD/Цвет/Шейп).
         """
-        if not os.path.exists(filepath):
-            print(f"[-] Ошибка: Файл конфигурации LUT {filepath} не найден.")
-            sys.exit(1)
-            
         print(f"[>] Загрузка таблицы стилей LUT из {filepath}...")
         
         try:
@@ -115,6 +110,9 @@ class LookupTables:
             if HWConstants.WATER_CODE not in cls.DISPLAY_SCALES:
                 cls.DISPLAY_SCALES[HWConstants.WATER_CODE] = 1000
                 
+        except FileNotFoundError:
+            print(f"[-] Ошибка: Файл конфигурации LUT {filepath} не найден.")
+            sys.exit(1)
         except Exception as e:
             print(f"[-] Критическая ошибка парсинга {filepath}: {e}")
             sys.exit(1)
