@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
 import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Optional
 
@@ -23,6 +24,9 @@ _STOP_WORDS = (
     "zav.", "kafe", "road", "lane", "cafe", "shop", "mall", "lake", "ave.",
     "ул.", "пер.", "пл.", "st.", "rd.", "ln.", "dr.", "sq.", "way", "pl."
 )
+
+_STOP_WORDS_RX = re.compile(r"^(" + "|".join(re.escape(w) for w in _STOP_WORDS) + r")\s+(.*)$", re.IGNORECASE)
+
 
 class GPXParser:
     """Extract track geometry for injection into the Roads layer."""
@@ -171,16 +175,14 @@ class OSMParser:
         if not name: return ""
             
         name = name.strip()
-        name_lower = name.lower()
         
-        for word in _STOP_WORDS:
-            prefix = word + " "
-            if name_lower.startswith(prefix):
-                core_name = name[len(prefix):].strip()
-                if core_name:
-                    core_name = core_name[0].upper() + core_name[1:]
-                    name = f"{core_name} {word.lower()}"
-                break 
+        m = _STOP_WORDS_RX.match(name)
+        if m:
+            word, core_name = m.groups()
+            core_name = core_name.strip()
+            if core_name:
+                core_name = core_name[0].upper() + core_name[1:]
+                name = f"{core_name} {word.lower()}"
                 
         name = name.replace(" ", "_")
         
