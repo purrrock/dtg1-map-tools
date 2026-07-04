@@ -7,6 +7,7 @@ import os
 import tempfile
 import shutil
 from xml.sax.saxutils import escape
+from typing import Any
 
 try:
     import numpy as np
@@ -18,8 +19,10 @@ except ImportError:
 # ==========================================
 # Core Algorithm: Numba Machine-Code Level RDP Line Simplification
 # ==========================================
+
+
 @njit
-def douglas_peucker_indices_fast(pts, epsilon):
+def douglas_peucker_indices_fast(pts: np.ndarray, epsilon: float) -> np.ndarray:
     n = len(pts)
     if n < 3:
         return np.arange(n, dtype=np.int64)
@@ -50,7 +53,7 @@ def douglas_peucker_indices_fast(pts, epsilon):
 
         dx = p2_x - p1_x
         dy = p2_y - p1_y
-        l2 = dx*dx + dy*dy
+        l2 = dx * dx + dy * dy
 
         dmax_sq = 0.0
         index = start
@@ -59,7 +62,7 @@ def douglas_peucker_indices_fast(pts, epsilon):
             px, py = pts[i, 0], pts[i, 1]
             if l2 == 0.0:
                 vx, vy = px - p1_x, py - p1_y
-                d_sq = vx*vx + vy*vy
+                d_sq = vx * vx + vy * vy
             else:
                 cross = dy * px - dx * py + p2_x * p1_y - p2_y * p1_x
                 d_sq = (cross * cross) / l2
@@ -84,45 +87,47 @@ def douglas_peucker_indices_fast(pts, epsilon):
 # ==========================================
 # Phase 1: PyOsmium Handler (Pure C++ Way Parsing)
 # ==========================================
+
+
 class WayOptimizer(o.SimpleHandler):
-    def __init__(self, temp_ways_file, temp_nodes_file, max_nodes_per_way, epsilon_deg):
+    def __init__(self, temp_ways_file: str, temp_nodes_file: str, max_nodes_per_way: int, epsilon_deg: float) -> None:
         super().__init__()
         self.tmp_f = open(temp_ways_file, 'wb')
-        self.tmp_nodes_f = open(temp_nodes_file, 'wb') # Temporary file for virtual nodes
+        self.tmp_nodes_f = open(temp_nodes_file, 'wb')  # Temporary file for virtual nodes
         self.max_nodes = max_nodes_per_way
         self.epsilon_deg = epsilon_deg
 
         self.used_node_ids = set()
         self.ways_count = 0
-        self.converted_pois_count = 0 # Extracted POI counter
+        self.converted_pois_count = 0  # Extracted POI counter
 
         # Triggers for object deletion
         self.drop_way_triggers = {'building', 'power'}
         # Unconditional deletion (corridors inside buildings)
         self.drop_way_kv = {'highway': {'corridor', 'elevator'}}
-        
+
         # Survival keys (if geometry is needed by compiler)
         self.survival_keys = {
-            'landuse', 'natural', 'amenity', 'leisure', 'tourism', 
+            'landuse', 'natural', 'amenity', 'leisure', 'tourism',
             'shop', 'sport', 'highway', 'waterway', 'barrier',
             'railway', 'aeroway', 'man_made', 'historic', 'route'
         }
 
         # [NEW] Keys marking an object as a Point of Interest
         self.poi_keys = {
-            'amenity', 'shop', 'leisure', 'tourism', 'sport', 
+            'amenity', 'shop', 'leisure', 'tourism', 'sport',
             'historic', 'craft', 'office', 'healthcare', 'emergency'
         }
 
         self.drop_tag_keys = {
-            'wikidata', 'wikipedia', 'phone', 'website', 'url', 
-            'opening_hours', 'email', 'maxspeed', 'lanes', 'oneway', 
+            'wikidata', 'wikipedia', 'phone', 'website', 'url',
+            'opening_hours', 'email', 'maxspeed', 'lanes', 'oneway',
             'note', 'source', 'fixme', 'building', 'power',
             'operator', 'start_date'
         }
         self.drop_tag_prefixes = ('addr:', 'contact:', 'payment:', 'source:', 'generator:', 'plant:')
 
-    def way(self, w):
+    def way(self, w: Any) -> None:
         has_drop_trigger = False
         has_survival_tag = False
         has_poi_tag = False
@@ -132,12 +137,12 @@ class WayOptimizer(o.SimpleHandler):
         for tag in w.tags:
             # 1. Unconditional fatal matches
             if tag.k in self.drop_way_kv and tag.v in self.drop_way_kv[tag.k]:
-                return 
+                return
 
             # 2. Triggers for possible deletion (building, power)
             if tag.k in self.drop_way_triggers:
                 has_drop_trigger = True
-                
+
             # 3. Survival triggers
             if tag.k in self.survival_keys:
                 has_survival_tag = True
@@ -173,16 +178,16 @@ class WayOptimizer(o.SimpleHandler):
             # Calculate the mathematical centroid of the building
             center_lon = sum(p[0] for p in pts) / len(pts)
             center_lat = sum(p[1] for p in pts) / len(pts)
-            
+
             # ID offset by 20 billion guarantees no collisions
             node_id = 20000000000 + w.id
             xml_str = f'  <node id="{node_id}" version="1" visible="true" lat="{center_lat:.6f}" lon="{center_lon:.6f}">\n'
-            
+
             for k, v in valid_tags:
                 v_esc = escape(v, entities={'"': "&quot;"})
                 xml_str += f'    <tag k="{k}" v="{v_esc}"/>\n'
             xml_str += '  </node>\n'
-            
+
             self.tmp_nodes_f.write(xml_str.encode('utf-8'))
             self.converted_pois_count += 1
             # Interrupt processing: we saved the object as a point, we no longer need the building polygon itself.
@@ -209,7 +214,7 @@ class WayOptimizer(o.SimpleHandler):
 
         original_id = w.id
         chunks = []
-        
+
         if is_polygon:
             chunks = [simplified_nds]
         else:
@@ -235,25 +240,25 @@ class WayOptimizer(o.SimpleHandler):
             self.tmp_f.write(xml_str.encode('utf-8'))
             self.ways_count += 1
 
-    def close(self):
+    def close(self) -> None:
         self.tmp_f.close()
         self.tmp_nodes_f.close()
 
 
-def clean_element_metadata(elem):
+def clean_element_metadata(elem: ET.Element) -> None:
     """ Cleaning garbage metadata and tags for Node and Relation """
     for attr in ['timestamp', 'changeset', 'uid', 'user']:
         elem.attrib.pop(attr, None)
-        
+
     if 'version' not in elem.attrib:
         elem.set('version', '1')
     if 'visible' not in elem.attrib:
         elem.set('visible', 'true')
 
     drop_keys = {
-        'wikidata', 'wikipedia', 'building', 'power', 
+        'wikidata', 'wikipedia', 'building', 'power',
         'phone', 'website', 'url', 'opening_hours', 'email',
-        'maxspeed', 'lanes', 'oneway', 
+        'maxspeed', 'lanes', 'oneway',
         'note', 'source', 'fixme',
         'operator', 'start_date'
     }
@@ -264,16 +269,17 @@ def clean_element_metadata(elem):
         if k in drop_keys or k.startswith(drop_prefixes):
             elem.remove(tag)
 
-def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilon_deg=0.00005):
+
+def optimize_osm_pyosmium(input_file: str, output_file: str, max_nodes_per_way: int = 100, epsilon_deg: float = 0.00005) -> None:
     temp_ways = tempfile.NamedTemporaryFile(delete=False, mode='wb')
     temp_ways_name = temp_ways.name
     temp_ways.close()
-    
+
     temp_nodes = tempfile.NamedTemporaryFile(delete=False, mode='wb')
     temp_nodes_name = temp_nodes.name
     temp_nodes.close()
 
-    print(f"[*] Phase 1: PyOsmium starting C++ engine to read coordinates and optimize ways...")
+    print("[*] Phase 1: PyOsmium starting C++ engine to read coordinates and optimize ways...")
     handler = WayOptimizer(temp_ways_name, temp_nodes_name, max_nodes_per_way, epsilon_deg)
 
     handler.apply_file(input_file, locations=True, idx='flex_mem')
@@ -282,10 +288,10 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
     used_node_ids = handler.used_node_ids
     ways_count = handler.ways_count
     converted_pois = handler.converted_pois_count
-    
+
     print(f"    ... PyOsmium analysis complete! Found {len(used_node_ids)} valid nodes, {ways_count} ways.")
     print(f"    ... Extracted {converted_pois} POIs from building polygons.")
-    print(f"[*] Phase 2: Using iterparse to reconstruct the final XML file at high speed...")
+    print("[*] Phase 2: Using iterparse to reconstruct the final XML file at high speed...")
 
     with open(output_file, 'wb') as out:
         out.write(b'<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6">\n')
@@ -309,15 +315,15 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
                 elif elem.tag in ('way', 'relation'):
                     if not ways_written:
                         # Strictly according to the OSM standard: first merge the generated virtual nodes (Nodes)
-                        print(f"    ... Injecting extracted POI nodes...")
+                        print("    ... Injecting extracted POI nodes...")
                         with open(temp_nodes_name, 'rb') as tn:
                             shutil.copyfileobj(tn, out)
-                            
+
                         # Then merge optimized polygons (Ways)
-                        print(f"    ... Seamlessly merging optimized ways...")
+                        print("    ... Seamlessly merging optimized ways...")
                         with open(temp_ways_name, 'rb') as tw:
                             shutil.copyfileobj(tw, out)
-                            
+
                         ways_written = True
 
                     # If this is a relation — write it to the tail (after introducing our temp files)
@@ -341,17 +347,18 @@ def optimize_osm_pyosmium(input_file, output_file, max_nodes_per_way=100, epsilo
 
     os.remove(temp_ways_name)
     os.remove(temp_nodes_name)
-    
-    print(f"[*] Optimization Summary:")
+
+    print("[*] Optimization Summary:")
     print(f"    - Nodes kept: {len(used_node_ids)} (plus standalone/extracted POIs)")
     print(f"    - Extracted POIs: {converted_pois}")
     print(f"    - Optimized Ways: {ways_count}")
     print("[+] Massive file processing complete! Performance and memory usage have reached optimal levels.")
 
+
 if __name__ == "__main__":
     input_osm = "map.osm"
     output_osm = "map_optimized.osm"
-    
+
     if len(sys.argv) == 3:
         input_osm = sys.argv[1]
         output_osm = sys.argv[2]
