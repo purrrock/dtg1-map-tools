@@ -4,8 +4,8 @@
 """
 DT G1 -> GeoJSON exporter (Roads, Landuse, Water ONLY)
 ======================================================
-Архитектура: Flat List State Machine (Плоский список).
-Парсер строго следует аппаратному алгоритму чтения прошивки DT G1.
+Architecture: Flat List State Machine.
+The parser strictly follows the hardware read algorithm of the DT G1 firmware.
 """
 
 import os
@@ -76,8 +76,8 @@ def parse_db(path):
 
 def parse_idx(path):
     """
-    Сканирует .idx файл и возвращает ТОЛЬКО валидные узлы данных.
-    Использует строгий автомат состояний плоского списка.
+    Scans the .idx file and returns ONLY valid data nodes.
+    Uses a strict flat list state machine.
     """
     nodes = []
     if not path.exists():
@@ -98,13 +98,13 @@ def parse_idx(path):
         next_sqt = data.find(b"SQT\x01", offset)
         limit = next_sqt if next_sqt != -1 else size
 
-        # Инициализация автомата состояний для текущего LOD-уровня
+        # Initialization of state machine for the current LOD level
         data_nodes_left = 0
 
         while offset + NODE_SIZE <= limit:
             raw = data[offset:offset+NODE_SIZE]
             
-            # Пропуск нулевого терминатора/выравнивания
+            # Skip zero terminator/alignment
             if raw == b'\x00' * NODE_SIZE:
                 offset += NODE_SIZE
                 continue
@@ -112,7 +112,7 @@ def parse_idx(path):
             v1, v2 = struct.unpack("<II", raw[:8])
 
             if data_nodes_left > 0:
-                # СОСТОЯНИЕ 3: Чтение целевых Данных (Data Node)
+                # STATE 3: Reading target Data (Data Node)
                 code = struct.unpack("<I", raw[24:28])[0]
                 nodes.append({
                     "offset": offset,
@@ -123,12 +123,12 @@ def parse_idx(path):
                 data_nodes_left -= 1
             else:
                 if v1 == 0:
-                    # СОСТОЯНИЕ 2: Заголовок кластера (Cluster Header)
-                    # Извлекаем v2 (Кол-во объектов + 1) для настройки счетчика
+                    # STATE 2: Cluster Header
+                    # Extract v2 (Number of objects + 1) to set up counter
                     data_nodes_left = v2 - 1 if v2 > 0 else 0
                 else:
-                    # СОСТОЯНИЕ 1: Узел перехода (Navigation Node)
-                    # Мы парсим файл целиком, поэтому прыжки (v3) нам не нужны. Просто пропускаем.
+                    # STATE 1: Navigation Node
+                    # We parse the entire file, so we don't need jumps (v3). Just skip.
                     pass
 
             offset += NODE_SIZE
@@ -227,7 +227,7 @@ def export_layer(base_dir, layer, debug=False):
 
     sys.stdout.write("    [>] Parsing IDX (Strict State Machine)... ")
     sys.stdout.flush()
-    # Теперь parse_idx возвращает только 100% валидные Data Nodes
+    # Now parse_idx returns only 100% valid Data Nodes
     nodes = parse_idx(idx_path)
     print("Done.")
 
@@ -258,7 +258,7 @@ def export_layer(base_dir, layer, debug=False):
                 "name": "",
             }
 
-            # Привязка базы данных
+            # Database binding
             if node["v2"] > 0:
                 db_index = node["v2"] - 1
                 if db_index < len(db_records) and db_records[db_index]:
@@ -269,7 +269,7 @@ def export_layer(base_dir, layer, debug=False):
             else:
                 unnamed_count += 1
 
-            # Привязка геометрии
+            # Geometry binding
             g = read_mlp_geometry_fast(f_mlp, node["v1"], mlp_size)
 
             if not g:

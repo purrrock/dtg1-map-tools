@@ -106,14 +106,14 @@ class MapCompiler:
     def _build_str_layer(cls, items: List[Any], level: int) -> List[RTreeNode]:
         """
         Sort-Tile-Recursive (STR) Bulk Loading Algorithm.
-        Разбивает плоский массив на квадратные матрицы (Tiles) для аппаратного Z-Culling.
+        Divides a flat array into square matrices (Tiles) for hardware Z-Culling.
         """
         if not items: return []
 
-        # 1. Сортировка объектов по оси X (Долгота центроида)
+        # 1. Sort objects by X axis (Centroid longitude)
         items.sort(key=lambda item: (item.bbox[0] + item.bbox[2]) / 2.0)
 
-        # 2. Вычисление математических лимитов слайсов
+        # 2. Calculate mathematical slice limits
         num_nodes = math.ceil(len(items) / HWConfig.CHUNK_SIZE)
         num_slices = math.ceil(math.sqrt(num_nodes))
 
@@ -122,12 +122,12 @@ class MapCompiler:
         slice_capacity = num_slices * HWConfig.CHUNK_SIZE
 
         nodes = []
-        # 3. Нарезка вертикальных слайсов и сортировка их по оси Y (Широта центроида)
+        # 3. Cut vertical slices and sort them by Y axis (Centroid latitude)
         for i in range(0, len(items), slice_capacity):
             slc = items[i:i + slice_capacity]
             slc.sort(key=lambda item: (item.bbox[1] + item.bbox[3]) / 2.0)
 
-            # 4. Упаковка в C-Union кластеры (по CHUNK_SIZE элементов)
+            # 4. Pack into C-Union clusters (CHUNK_SIZE elements each)
             for j in range(0, len(slc), HWConfig.CHUNK_SIZE):
                 chunk = slc[j:j + HWConfig.CHUNK_SIZE]
                 nodes.append(RTreeNode(level=level, children=chunk))
@@ -137,8 +137,8 @@ class MapCompiler:
     @classmethod
     def _build_rtree(cls, features: List[MapFeature]) -> Tuple[int, List[RTreeNode]]:
         """
-        Рекурсивно строит древовидную иерархию Макро-узлов (Nav Nodes).
-        Возвращает: (Глубина дерева, Список корневых макро-узлов)
+        Recursively builds a tree hierarchy of Macro-nodes (Nav Nodes).
+        Returns: (Tree depth, List of root macro-nodes)
         """
         if not features:
             return 0, []
@@ -149,7 +149,7 @@ class MapCompiler:
         while True:
             current_layer = cls._build_str_layer(current_layer, level)
             level += 1
-            # Останавливаемся, если весь слой помещается в один массив корневых узлов
+            # Stop if the entire layer fits into one array of root nodes
             if len(current_layer) <= HWConfig.CHUNK_SIZE:
                 break
 
@@ -162,7 +162,7 @@ class MapCompiler:
         idx_buffer = bytearray()
 
         if is_poi:
-            # Для больших массивов POI теперь также применяется R-Tree сжатие
+            # For large POI arrays, R-Tree compression is now also applied
             if not features:
                 idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0))
             else:
@@ -175,7 +175,7 @@ class MapCompiler:
             cls._write_yzl_container(filepath, idx_buffer, is_idx=False)
 
         else:
-            # Стандартная многоуровневая ГИС-геометрия (LOD 0, 1, 2)
+            # Standard multi-level GIS geometry (LOD 0, 1, 2)
             lod_filters = [
                 lambda c: True,
                 lambda c: LookupTables.DISPLAY_SCALES.get(c, 20) >= 500,
@@ -197,7 +197,7 @@ class MapCompiler:
                     else:
                         depth, root_nodes = cls._build_rtree(lod_records)
 
-                        # Динамическая запись 16-байтового заголовка SQT
+                        # Dynamic recording of a 16-byte SQT header
                         header = b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", depth, len(root_nodes))
                         packed_data = bytearray(header)
                         for node in root_nodes: packed_data.extend(node.pack())

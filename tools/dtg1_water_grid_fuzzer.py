@@ -4,39 +4,39 @@
 """
 DT G1 Water Layer Calibration Grid Generator
 ============================================
-Генерирует регулярную сетку полигонов OSM для проверки 
-аппаратных стилей (Feature Codes) гидрологических объектов (серия 82xx).
+Generates a regular grid of OSM polygons to check
+hardware styles (Feature Codes) of hydrological objects (82xx series).
 """
 
 import math
 
-# Целевые координаты (центр полигона тестирования)
+# Target coordinates (center of testing polygon)
 LAT_CENTER = 53.7135
 LON_CENTER = 28.4194
 
-# Перечень объектов слоя "water" (на базе Geofabrik Section 6.5 / 6.6)
-# Эти теги транслируются в серию 82xx (8211, 8212, 8221 и т.д.)
+# List of "water" layer objects (based on Geofabrik Section 6.5 / 6.6)
+# These tags are translated into the 82xx series (8211, 8212, 8221, etc.)
 WATER_FEATURES = [
-    {"natural": "water"},               # Базовая вода (8211)
-    {"landuse": "reservoir"},           # Водохранилище (8212)
-    {"waterway": "riverbank"},          # Русло реки (8213)
-    {"natural": "glacier"},             # Ледник (8214)
-    {"natural": "wetland"},             # Болото/заболоченность (8221)
-    {"natural": "bay"},                 # Залив
-    {"natural": "water", "water": "lake"},  # Озеро (уточнение)
-    {"natural": "water", "water": "river"}, # Река (уточнение)
-    {"landuse": "basin"}                # Бассейн
+    {"natural": "water"},               # Base water (8211)
+    {"landuse": "reservoir"},           # Reservoir (8212)
+    {"waterway": "riverbank"},          # Riverbed (8213)
+    {"natural": "glacier"},             # Glacier (8214)
+    {"natural": "wetland"},             # Swamp/wetland (8221)
+    {"natural": "bay"},                 # Bay
+    {"natural": "water", "water": "lake"},  # Lake (clarification)
+    {"natural": "water", "water": "river"}, # River (clarification)
+    {"landuse": "basin"}                # Basin
 ]
 
 def generate_calibration_grid(filename="water_calibration.osm"):
-    # Перевод градусов в метры для проекции Меркатора
+    # Conversion of degrees to meters for Mercator projection
     METER_PER_LAT = 111320.0
     METER_PER_LON = 111320.0 * math.cos(math.radians(LAT_CENTER))
     
-    # Геометрия тестового полигона
-    SIZE_M = 50.0  # Размер квадрата 100х100 метров
-    GAP_M = 25.0    # Отступ между квадратами 50 метров
-    COLS = 3        # Количество колонок в матрице
+    # Geometry of test polygon
+    SIZE_M = 50.0  # Square size 100x100 meters
+    GAP_M = 25.0    # Indent between squares 50 meters
+    COLS = 3        # Number of columns in the matrix
     
     osm_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -50,7 +50,7 @@ def generate_calibration_grid(filename="water_calibration.osm"):
         row = idx // COLS
         col = idx % COLS
         
-        # Вычисление смещения от центра
+        # Calculation of offset from center
         offset_lat_m = -row * (SIZE_M + GAP_M)
         offset_lon_m = col * (SIZE_M + GAP_M)
         
@@ -60,36 +60,36 @@ def generate_calibration_grid(filename="water_calibration.osm"):
         d_lat = SIZE_M / METER_PER_LAT
         d_lon = SIZE_M / METER_PER_LON
         
-        # Вершины квадрата (обход по часовой стрелке)
+        # Square vertices (clockwise traversal)
         nodes_coords = [
-            (base_lat, base_lon),                   # Нижний левый
-            (base_lat + d_lat, base_lon),           # Верхний левый
-            (base_lat + d_lat, base_lon + d_lon),   # Верхний правый
-            (base_lat, base_lon + d_lon)            # Нижний правый
+            (base_lat, base_lon),                   # Bottom left
+            (base_lat + d_lat, base_lon),           # Top left
+            (base_lat + d_lat, base_lon + d_lon),   # Top right
+            (base_lat, base_lon + d_lon)            # Bottom right
         ]
         
         current_node_ids = []
         
-        # Генерация XML <node>
+        # Generation of XML <node>
         for lat, lon in nodes_coords:
             osm_lines.append(f'  <node id="{node_id}" lat="{lat:.7f}" lon="{lon:.7f}" version="1"/>')
             current_node_ids.append(node_id)
             node_id += 1
             
-        # Генерация XML <way>
+        # Generation of XML <way>
         osm_lines.append(f'  <way id="{way_id}" version="1">')
         
-        # Привязка вершин
+        # Binding of vertices
         for nid in current_node_ids:
             osm_lines.append(f'    <nd ref="{nid}"/>')
-        # Замыкание контура
+        # Closing contour
         osm_lines.append(f'    <nd ref="{current_node_ids[0]}"/>') 
         
-        # Внедрение тегов
+        # Injection of tags
         for k, v in tags.items():
             osm_lines.append(f'    <tag k="{k}" v="{v}"/>')
         
-        # Генерация имени для отладки
+        # Name generation for debugging
         tag_desc = " ".join([f"{k}={v}" for k, v in tags.items()])
         osm_lines.append(f'    <tag k="name" v="Style Test: {tag_desc}"/>')
         osm_lines.append('  </way>')
@@ -98,12 +98,12 @@ def generate_calibration_grid(filename="water_calibration.osm"):
         
     osm_lines.append('</osm>')
     
-    # Физическая запись файла
+    # Physical writing of file
     with open(filename, 'w', encoding='utf-8') as f:
         f.write('\n'.join(osm_lines))
         
-    print(f"[*] Сгенерирована калибровочная сетка: {filename}")
-    print(f"[*] Количество тестовых полигонов: {len(WATER_FEATURES)}")
+    print(f"[*] Calibration grid generated: {filename}")
+    print(f"[*] Number of test polygons: {len(WATER_FEATURES)}")
 
 if __name__ == '__main__':
     generate_calibration_grid()

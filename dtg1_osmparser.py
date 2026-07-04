@@ -82,8 +82,8 @@ class OSMParser:
         
     def _analyze_road_surface(self, tags: Dict[str, str]) -> Optional[str]:
         """
-        Анализирует теги качества и покрытия дороги.
-        Приоритет отдается тегу smoothness.
+        Analyzes road quality and surface tags.
+        Priority is given to the smoothness tag.
         """
         smoothness = tags.get("smoothness")
         if smoothness in {"bad", "very_bad", "horrible", "very_horrible", "impassable"}:
@@ -190,13 +190,13 @@ class OSMParser:
                 
         name = name.replace(" ", "_")
         
-        # 1. Ограничение для UI (символы). 
-        # Графический движок часов корректно вмещает ~22 символа на экране.
+        # 1. Limit for UI (characters).
+        # The watch's graphics engine correctly fits ~22 characters on the screen.
         if len(name) > 22:
             name = name[:20].rstrip('_') + ".."
             
-        # 2. Ограничение для БД .db (байты). 
-        # Спецификация dBase III строго выделяет 100 байт под поле name.
+        # 2. Limit for DB .db (bytes).
+        # The dBase III specification strictly allocates 100 bytes for the name field.
         encoded_name = name.encode('utf-8')
         if len(encoded_name) > 100:
             name_bytes = safe_encode(name, 100)
@@ -265,30 +265,30 @@ class OSMParser:
         name = OSMParser.sanitize_osm_name(raw_name.strip())
         osm_id = elem.attrib['id']
 
-        # === ЗАЩИТА: Runtime-экстракция POI из замкнутых полигонов ===
+        # === PROTECTION: Runtime extraction of POIs from closed polygons ===
         is_closed = len(points) >= 4 and points[0] == points[-1]
         
         if is_closed and any(k in tags for k in ('building', 'amenity', 'shop', 'leisure', 'tourism', 'historic')):
             poi_fclass = None
             
-            # 1. Поиск по явным парам ключ-значение в LUT
+            # 1. Search by explicit key-value pairs in LUT
             for k, v in tags.items():
                 if (k, v) in LookupTables.TAG_ROUTING.get('pois', {}):
                     poi_fclass = LookupTables.TAG_ROUTING['pois'][(k, v)]
                     break
             
-            # 2. Fallback-поиск по одиночным значениям
+            # 2. Fallback search by single values
             if not poi_fclass:
                 for val in tags.values():
                     if val in LookupTables.POI_CODES:
                         poi_fclass = val
                         break
             
-            # 3. Инъекция центроида
+            # 3. Centroid injection
             if poi_fclass and poi_fclass not in LookupTables.DISABLED_POIS:
                 poi_code = LookupTables.POI_CODES.get(poi_fclass)
                 if poi_code:
-                    # Вычисляем математический центроид (отбрасывая дублирующую замыкающую вершину)
+                    # Calculate mathematical centroid (discarding duplicate closing vertex)
                     unique_points = points[:-1]
                     avg_lon = sum(p[0] for p in unique_points) / len(unique_points)
                     avg_lat = sum(p[1] for p in unique_points) / len(unique_points)

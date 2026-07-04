@@ -5,41 +5,41 @@ import math
 import datetime
 
 # ==========================================
-# КОНСТАНТЫ ГЕОМЕТРИИ И КООРДИНАТ
+# GEOMETRY AND COORDINATE CONSTANTS
 # ==========================================
-# Базовые координаты (левый верхний угол стартовой сетки)
+# Base coordinates (top left corner of the starting grid)
 LAT_CENTER = 53.70509
 LON_CENTER = 28.419233
 
-# Радиус Земли (модель WGS 84, экваториальный радиус)
+# Earth radius (WGS 84 model, equatorial radius)
 EARTH_RADIUS = 6378137.0
 
-# Расстояние между центрами точек в матрице
+# Distance between point centers in the matrix
 SPACING_METERS = 20.0
 
 OUTPUT_FILENAME = "points_test_grid_v1.osm"
 
 # ==========================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# AUXILIARY FUNCTIONS
 # ==========================================
 
 def meters_to_lat_delta(meters):
-    # Преобразование линейного смещения (метры) в угловое (градусы широты)
+    # Convert linear offset (meters) to angular (degrees latitude)
     return (meters / EARTH_RADIUS) * (180.0 / math.pi)
 
 def meters_to_lon_delta(meters, latitude):
-    # Преобразование линейного смещения (метры) в угловое (градусы долготы).
-    # Используется косинус текущей широты для компенсации схождения меридианов к полюсам.
+    # Convert linear offset (meters) to angular (degrees longitude).
+    # Uses the cosine of the current latitude to compensate for meridian convergence towards the poles.
     lat_rad = math.radians(latitude)
     return (meters / (EARTH_RADIUS * math.cos(lat_rad))) * (180.0 / math.pi)
 
 # ==========================================
-# ОПРЕДЕЛЕНИЕ ТЕГОВ ТОЧЕК (POI)
+# DEFINITION OF POINT TAGS (POI)
 # ==========================================
 
 def get_poi_definitions():
-    # Возвращает список словарей. Каждый словарь соответствует одному узлу (Node).
-    # Ключи и значения словаря напрямую транслируются в <tag k="..." v="..."/>.
+    # Returns a list of dictionaries. Each dictionary corresponds to one node (Node).
+    # Keys and values of the dictionary are directly translated to <tag k="..." v="..."/>.
     return [
         {"natural": "saddle"},
         {"tourism": "camp_site"},
@@ -51,16 +51,16 @@ def get_poi_definitions():
         {"shop": "supermarket"},
         {"tourism": "attraction"},
         {"shop": "bicycle"},
-        {"barrier": "gate", "access": "private"}, # Мультитегирование для одного узла
-        {"amenity": "shower"}                     # Точка Shower (замыкает матрицу 3x4)
+        {"barrier": "gate", "access": "private"}, # Multi-tagging for a single node
+        {"amenity": "shower"}                     # Shower point (closes 3x4 matrix)
     ]
 
 # ==========================================
-# ГЕНЕРАЦИЯ OSM XML 
+# OSM XML GENERATION
 # ==========================================
 
 def generate_points_osm():
-    # Генерация временной метки по стандарту ISO 8601 для соответствия спецификации OSM
+    # ISO 8601 timestamp generation to comply with OSM specification
     timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     poi_defs = get_poi_definitions()
     
@@ -73,22 +73,22 @@ def generate_points_osm():
     nodes_xml = ""
     
     for i, tags in enumerate(poi_defs):
-        # Матричное проецирование: сетка по 4 точки в ряду
+        # Matrix projection: grid of 4 points in a row
         row = i // 4  
         col = i % 4   
         
-        # Расчет смещения в метрах.
-        # Ось Y инвертирована (-row) для корректной отрисовки сверху-вниз на стандартной карте.
+        # Calculation of offset in meters.
+        # Y axis inverted (-row) for correct top-down rendering on a standard map.
         north_offset_meters = -row * SPACING_METERS 
         east_offset_meters = col * SPACING_METERS
         
         node_lat = LAT_CENTER + meters_to_lat_delta(north_offset_meters)
         node_lon = LON_CENTER + meters_to_lon_delta(east_offset_meters, LAT_CENTER)
         
-        # Формирование блока <node>
+        # Formation of <node> block
         nodes_xml += f'  <node id="{node_id}" lat="{node_lat:.7f}" lon="{node_lon:.7f}" timestamp="{timestamp}" version="1">\n'
         
-        # Внедрение тегов внутрь элемента узла
+        # Injection of tags into the node element
         for k, v in tags.items():
             nodes_xml += f'    <tag k="{k}" v="{v}"/>\n'
             
@@ -98,7 +98,7 @@ def generate_points_osm():
 
     xml_footer = "</osm>\n"
     
-    # Запись дампа памяти структур в файл
+    # Write structure memory dump to file
     with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
         f.write(xml_header)
         f.write(nodes_xml)

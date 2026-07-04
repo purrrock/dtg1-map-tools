@@ -77,29 +77,29 @@ class RTreeNode:
     bin_size: int = field(init=False)
 
     def __post_init__(self):
-        # 1. Вычисление охватывающего прямоугольника (Enveloping BBox)
+        # 1. Calculating the bounding rectangle (Enveloping BBox)
         minx = min(c.bbox[0] for c in self.children)
         miny = min(c.bbox[1] for c in self.children)
         maxx = max(c.bbox[2] for c in self.children)
         maxy = max(c.bbox[3] for c in self.children)
         self.bbox = (minx, miny, maxx, maxy)
 
-        # 2. Вычисление размера дочернего поддерева в байтах
+        # 2. Calculating the size of the child subtree in bytes
         if self.level == 0:
-            # Уровень 0 (Дно дерева): Дети — это сырая геометрия (Data Nodes)
+            # Level 0 (Bottom of the tree): Children are raw geometry (Data Nodes)
             child_payload_size = len(self.children) * HWConfig.NODE_SIZE
         else:
-            # Уровень > 0 (Макро-узлы): Дети — это другие RTreeNode
+            # Level > 0 (Macro-nodes): Children are other RTreeNodes
             child_payload_size = sum(c.bin_size for c in self.children)
             
-        # Аппаратный прыжок = размер всего дерева под этим узлом + 8 байт компенсации
+        # Hardware jump = size of the entire tree under this node + 8 bytes of compensation
         self.v3_jump = child_payload_size + 8
-        # Собственный размер в бинарнике = 28 байт (сам узел) + все поддерево
+        # Own size in binary = 28 bytes (the node itself) + the whole subtree
         self.bin_size = HWConfig.NODE_SIZE + child_payload_size
 
     def pack(self) -> bytes:
         """
-        Рекурсивная упаковка C-Union структур дерева в бинарный поток.
+        Recursive packing of C-Union tree structures into a binary stream.
         """
         data = bytearray(struct.pack(
             "<IffffII", 
