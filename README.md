@@ -16,7 +16,7 @@ The toolset allows building your own highly detailed maps from open sources (e.g
 ## 🚀 Core Compiler Features
 
 The compiler has been significantly upgraded to bypass native firmware limitations and optimize resource consumption:
-
+* **Country-Sized Map Support (Hierarchical R-Trees):** Generates true STR (Sort-Tile-Recursive) spatial index trees. By utilizing nested Macro-nodes and calculating recursive byte jumps (`v3_jump`), the compiler allows the watch's graphics coprocessor to skip entire regions in a single instruction. This bypasses SRAM limits and ensures butter-smooth panning on maps of any size.
 * **Point of Interest (POI) Icon Baking:** Circumvents the hardware graphics pipeline limitation (which natively drops POI rendering) by parametrically "baking" point objects into the landuse layer. Generates low-poly geometric primitives (triangles, squares, hexagons) with automatic display perspective distortion compensation (Y-multiplier = 1.5).
 * **Software Culling (Early Exit Parsing):** Highly optimized two-pass XML streaming (`xml.etree.ElementTree.iterparse`). Drops disabled routing nodes immediately during tree traversal via the 11th column (`Enabled`) in the LUT configuration.
 * **Dynamic Hardware Overrides (Tag Interception):** Overrides standard LUT routing rules on the fly based on multidimensional OSM tags.
