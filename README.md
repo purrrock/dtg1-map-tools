@@ -70,7 +70,7 @@ The compiler now supports both running from Python source code and compiling int
 ### Option A: Standalone Executable (Windows Only)
 Perfect for regular users. No Python installation required!
 1. Place `dtg1_map_compiler.exe`, the `features.csv` file, and your source map.osm data into any convenient folder.
-2. Run the executable via command line (e.g., `dtg1_map_compiler.exe -p landuse`).
+2. Run the executable via command line (e.g., `dtg1_map_compiler.exe`).
 
 ### Option B: Running from Source (Developers & Cross-Platform)
 1. Ensure you have Python 3.8 or higher installed. No additional third-party dependencies are required for the core map build (the project exclusively uses built-in modules).
