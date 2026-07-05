@@ -10,6 +10,7 @@ from typing import List, Tuple, Any
 from dtg1_models import MapFeature, RTreeNode, HWConfig, safe_encode
 from dtg1_lookup import LookupTables
 
+
 class MapCompiler:
     """Generator of hardware binary structures (YZL/SQT/DBF) for ATS3085S platform."""
 
@@ -36,7 +37,7 @@ class MapCompiler:
     @staticmethod
     def _desc(name: str, length: int) -> bytes:
         """Pack dBase III field descriptor."""
-        return name.encode('ascii').ljust(11, b'\x00') + b'C' + b'\x00'*4 + bytes([length]) + b'\x00'*15
+        return name.encode('ascii').ljust(11, b'\x00') + b'C' + b'\x00' * 4 + bytes([length]) + b'\x00' * 15
 
     @classmethod
     def compile_mlp(cls, features: List[MapFeature], filepath: str) -> None:
@@ -51,8 +52,10 @@ class MapCompiler:
             body = bytearray(struct.pack("<iiii", minx_i, miny_i, maxx_i, maxy_i))
             body += struct.pack("<II", len(feature.parts), len(feature.points))
 
-            for part_idx in feature.parts: body += struct.pack("<I", part_idx)
-            for p in feature.points: body += struct.pack("<ii", int(p[0] * 1e6), int(p[1] * 1e6))
+            for part_idx in feature.parts:
+                body += struct.pack("<I", part_idx)
+            for p in feature.points:
+                body += struct.pack("<ii", int(p[0] * 1e6), int(p[1] * 1e6))
 
             header = struct.pack(">I", record_number) + struct.pack("<I", len(body))
             record_bin = header + body
@@ -71,9 +74,11 @@ class MapCompiler:
         """Serializes text attributes into a dBase III (.db) format encapsulated in YZL."""
         if not is_poi and not any(f.name for f in features):
             print(f"[~] Layer {filepath} contains no named objects. .db file creation skipped.")
-            for f in features: f.v2 = 0
+            for f in features:
+                f.v2 = 0
             return
-        if is_poi and not features: return
+        if is_poi and not features:
+            return
 
         print(f"[>] Compiling attributes: {filepath}...")
 
@@ -92,13 +97,16 @@ class MapCompiler:
                 bin_records += r_bytes
 
         dbf_header = (
-            bytearray(b'\x03\x00\x00\x00') +
-            struct.pack('<I', total_records) +
-            struct.pack('<H', HWConfig.DBF_HEADER_LEN) +
-            struct.pack('<H', HWConfig.DBF_RECORD_LEN) +
-            b'\x00' * 20 +
-            cls._desc("osm_id", 12) + cls._desc("code", 4) + cls._desc("fclass", 28) + cls._desc("name", 100) +
-            b'\x0D'
+            bytearray(b'\x03\x00\x00\x00')
+            + struct.pack('<I', total_records)
+            + struct.pack('<H', HWConfig.DBF_HEADER_LEN)
+            + struct.pack('<H', HWConfig.DBF_RECORD_LEN)
+            + b'\x00' * 20
+            + cls._desc("osm_id", 12)
+            + cls._desc("code", 4)
+            + cls._desc("fclass", 28)
+            + cls._desc("name", 100)
+            + b'\x0D'
         )
         cls._write_yzl_container(filepath, dbf_header + bin_records, is_idx=False)
 
@@ -108,7 +116,8 @@ class MapCompiler:
         Sort-Tile-Recursive (STR) Bulk Loading Algorithm.
         Divides a flat array into square matrices (Tiles) for hardware Z-Culling.
         """
-        if not items: return []
+        if not items:
+            return []
 
         # 1. Sort objects by X axis (Centroid longitude)
         items.sort(key=lambda item: (item.bbox[0] + item.bbox[2]) / 2.0)
@@ -117,7 +126,8 @@ class MapCompiler:
         num_nodes = math.ceil(len(items) / HWConfig.CHUNK_SIZE)
         num_slices = math.ceil(math.sqrt(num_nodes))
 
-        if num_slices == 0: return []
+        if num_slices == 0:
+            return []
 
         slice_capacity = num_slices * HWConfig.CHUNK_SIZE
 
@@ -166,11 +176,13 @@ class MapCompiler:
             if not features:
                 idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0))
             else:
-                for f in features: f.v1 = 0
+                for f in features:
+                    f.v1 = 0
                 depth, root_nodes = cls._build_rtree(features)
 
                 idx_buffer.extend(b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", depth, len(root_nodes)))
-                for node in root_nodes: idx_buffer.extend(node.pack())
+                for node in root_nodes:
+                    idx_buffer.extend(node.pack())
 
             cls._write_yzl_container(filepath, idx_buffer, is_idx=False)
 
@@ -200,7 +212,8 @@ class MapCompiler:
                         # Dynamic recording of a 16-byte SQT header
                         header = b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", depth, len(root_nodes))
                         packed_data = bytearray(header)
-                        for node in root_nodes: packed_data.extend(node.pack())
+                        for node in root_nodes:
+                            packed_data.extend(node.pack())
 
                         idx_buffer.extend(packed_data)
 
@@ -218,13 +231,16 @@ class MapCompiler:
         print(f"[>] Creating system Hex dummy: {layer_prefix}...")
         mlp_hex = "595A4C00000000000000000400000000D41D8CD98F00B204E9800998ECF8427E"
         idx_hex = "595A4C10300000000000000400000010E5F9D2228804251B5F9E3EAB298C30E5535154010100000000000000000000005351540101000000000000000000000053515401010000000000000000000000"
-        with open(f"{layer_prefix}.mlp", "wb") as f: f.write(bytearray.fromhex(mlp_hex))
-        with open(f"{layer_prefix}.idx", "wb") as f: f.write(bytearray.fromhex(idx_hex))
+        with open(f"{layer_prefix}.mlp", "wb") as f:
+            f.write(bytearray.fromhex(mlp_hex))
+        with open(f"{layer_prefix}.idx", "wb") as f:
+            f.write(bytearray.fromhex(idx_hex))
 
     @staticmethod
     def create_map_name(name: str, meta_records: List[MapFeature], out_file: str = "map.name") -> None:
         """Generates the JSON camera centering file."""
-        if not meta_records: return
+        if not meta_records:
+            return
         center_lat = (min(r.bbox[1] for r in meta_records) + max(r.bbox[3] for r in meta_records)) / 2.0
         center_lon = (min(r.bbox[0] for r in meta_records) + max(r.bbox[2] for r in meta_records)) / 2.0
         with open(out_file, "w", encoding="utf-8") as f:

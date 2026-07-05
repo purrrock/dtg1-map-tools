@@ -20,6 +20,7 @@ from dtg1_bin_writer import MapCompiler
 from dtg1_geometry import POIGeometryFactory
 from dtg1_lookup import LookupTables
 
+
 def get_base_directory() -> str:
     """
     Determines the base directory for program execution.
@@ -32,7 +33,8 @@ def get_base_directory() -> str:
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
-def main():
+
+def main() -> None:
     cli_parser = argparse.ArgumentParser(description="DT G1 Map Compiler (Platform ATS3085S)")
     cli_parser.add_argument(
         "-p", "--poi-mode", choices=["native", "landuse", "none"], default="landuse",
@@ -45,18 +47,17 @@ def main():
     map_osm_path = os.path.join(base_dir, "map.osm")
     features_csv_path = os.path.join(base_dir, "features.csv")
     routes_dir_path = os.path.join(base_dir, "routes")
-    legacy_route_path = os.path.join(base_dir, "route.gpx")
 
     if not os.path.exists(map_osm_path):
         print(f"[-] Error: {map_osm_path} file not found. Terminating.")
         return
-        
+
     print("=========================================")
     print("DT G1 MAP COMPILER")
     print(f"POI layer mode: {args.poi_mode.upper()}")
     print(f"Base Directory: {base_dir}")
     print("=========================================")
-    
+
     # 1. Initialize Look-Up Tables
     LookupTables.load_from_csv(features_csv_path)
 
@@ -67,20 +68,20 @@ def main():
     # 3. GPX Track Injection
     if os.path.exists(routes_dir_path) and os.path.isdir(routes_dir_path):
         gpx_files = [f for f in os.listdir(routes_dir_path) if f.lower().endswith(".gpx")]
-        
+
         if gpx_files:
             print(f"[>] Scanning '{routes_dir_path}/' directory. Found {len(gpx_files)} GPX track(s)...")
             for idx, file_name in enumerate(gpx_files, start=1):
                 gpx_path = os.path.join(routes_dir_path, file_name)
                 track_name, track_points = GPXParser.parse_track(gpx_path)
-                
+
                 if not track_name or track_name == "Route":
                     track_name = os.path.splitext(file_name)[0]
-                
+
                 if track_points and len(track_points) >= 2:
                     unique_track_id = f"user_track_{idx:03d}"
                     gpx_feature = MapFeature(
-                        osm_id=unique_track_id, fclass="gpx_track", 
+                        osm_id=unique_track_id, fclass="gpx_track",
                         code=5111, name=track_name, points=track_points
                     )
                     gpx_feature.calculate_bbox()
@@ -88,10 +89,11 @@ def main():
                     print(f"    [{idx}/{len(gpx_files)}] Track '{track_name}' successfully integrated.")
         else:
             print(f"[~] Directory '{routes_dir_path}/' is empty. No GPX tracks to inject.")
-            
+
     # 4. Serialize Layers
-    # Helper lambda to route output binary files to the base directory
-    out_path = lambda filename: os.path.join(base_dir, filename)
+    # Helper to route output binary files to the base directory
+    def out_path(filename: str) -> str:
+        return os.path.join(base_dir, filename)
 
     meta_all: List[MapFeature] = []
 
@@ -106,14 +108,15 @@ def main():
     if args.poi_mode == "landuse" and pois_data:
         print("[>] Baking POI objects into landuse layer using dynamic shape factory...")
         for poi in pois_data:
-            if not poi.points: continue
+            if not poi.points:
+                continue
             shape_type = LookupTables.POI_SHAPES.get(poi.fclass, "rhombus").lower()
             poi.points = POIGeometryFactory.generate_polygon(shape_type, poi.points[0][0], poi.points[0][1])
             poi.calculate_bbox()
             landuse_data.append(poi)
-  
+
         print(f"    Successfully baked {len(pois_data)} POIs.")
-        pois_data.clear() 
+        pois_data.clear()
 
     # 4.3 Landuse and Water Layers
     landuse_only = [f for f in landuse_data if f.code != HWConfig.WATER_CODE]
@@ -135,23 +138,24 @@ def main():
         meta_all.extend(water_only)
 
     # 4.4 Native POI Layer
-    if args.poi_mode == "none": 
+    if args.poi_mode == "none":
         print("[>] POI layer skipped ('none' mode selected).")
     elif args.poi_mode == "native":
         if pois_data:
             MapCompiler.compile_db(pois_data, out_path("pois.db"), is_poi=True)
             MapCompiler.compile_idx(pois_data, out_path("pois.idx"), is_poi=True)
             meta_all.extend(pois_data)
-        else: 
+        else:
             print("[~] Point objects (POI) are missing in the source data.")
-    elif args.poi_mode == "landuse": 
+    elif args.poi_mode == "landuse":
         print("[>] POI mode 'landuse' successfully handled.")
 
     # 5. Export JSON Metadata
-    if meta_all: 
+    if meta_all:
         MapCompiler.create_map_name("DTG1_Map", meta_all, out_path("map.name"))
-    
+
     print("\n[SUCCESS] Map package compiled successfully!")
+
 
 if __name__ == "__main__":
     main()
