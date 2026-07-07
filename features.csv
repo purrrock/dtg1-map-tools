@@ -254,7 +254,7 @@ Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LO
 5621;bus_stop;Black;100;pois;highway=bus_stop;Автобусная остановка;7219;Salmon;500;0;transport
 5622;bus_station;Black;500;pois;amenity=bus_station;Автовокзал;7219;Salmon;500;1;transport
 5641;taxi_rank;Black;100;pois;amenity=taxi;Стоянка такси;7219;Salmon;500;0;transport
-5651;airport;Black;100;pois;amenity=airport;Аэропорт;7219;Salmon;500;1;airplane
+5651;airport;Black;100;pois;amenity=airport;Аэропорт;8200;Blue;500;1;airplane
 5651;aerodrome;Black;100;pois;aeroway=aerodrome;Аэродром;7219;Salmon;500;0;transport
 5652;airfield;Black;100;pois;aeroway=airfield;Летное поле;7219;Salmon;500;0;transport
 5655;helipad;Black;100;pois;aeroway=helipad;Вертолетная площадка;7219;Salmon;500;0;transport
