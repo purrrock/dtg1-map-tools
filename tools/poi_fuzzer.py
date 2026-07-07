@@ -41,16 +41,16 @@ def get_poi_definitions():
     # Returns a list of dictionaries. Each dictionary corresponds to one node (Node).
     # Keys and values of the dictionary are directly translated to <tag k="..." v="..."/>.
     return [
-        {"natural": "saddle"},
-        {"tourism": "camp_site"},
-        {"tourism": "hotel"},
-        {"amenity": "restaurant"},
-        {"amenity": "pharmacy"},
-        {"amenity": "toilets"},
-        {"railway": "station"},
-        {"shop": "supermarket"},
-        {"tourism": "attraction"},
-        {"shop": "bicycle"},
+        {"shop": "clothes"},
+        {"shop": "hardware"},
+        {"shop": "car_repair"},
+        {"shop": "computer"},
+        {"shop": "outdoor"},
+        {"amenity": "airport"},
+        {"amenity": "fuel"},
+        {"amenity": "bank"},
+        {"amenity": "police"},
+        {"amenity": "fire_station"},
         {"barrier": "gate", "access": "private"}, # Multi-tagging for a single node
         {"amenity": "shower"}                     # Shower point (closes 3x4 matrix)
     ]
