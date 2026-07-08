@@ -73,8 +73,9 @@ Perfect for regular users. No Python installation required!
 2. Run the executable via command line (e.g., `dtg1_map_compiler.exe`).
 
 ### Option B: Running from Source (Developers & Cross-Platform)
-1. Ensure you have Python 3.8 or higher installed. No additional third-party dependencies are required for the core map build (the project exclusively uses built-in modules).
+1. Ensure you have Python 3.10 or higher installed.
 2. Download the repository with all its modular Python files.
+3. Install the required external libraries by running `pip install -r requirements.txt`.
 
 ### Standard Compilation Workflow
 1. Export the desired map area from https://www.openstreetmap.org/export in XML format.
