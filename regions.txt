@@ -7,7 +7,7 @@ ukraine
 central-fed-district
 crimean-fed-district
 far-eastern-fed-district
-Kaliningrad
+kaliningrad
 north-caucasus-fed-district
 northwestern-fed-district
 siberian-fed-district
