@@ -16,13 +16,13 @@ Each binary map layer file (`.idx`, `.mlp`, `.db`) must begin with a global syst
 | `0x00` | 3 | `char[3]` | **Magic Signature (Magic)** | Strictly `b'YZL'` (`59 5A 4C`) |
 | `0x03` | 1 | `uint8` | **File Magic Extension** | For `.mlp` and `.db` = `0x00`. For `.idx` variable (`0x08`, `0x10`, `0x0C`, etc.) |
 | `0x04` | 4 | `uint32` | **Payload Size** | In bytes (Little-Endian). Formula: `File Size - 32` |
-| `0x08` | 4 | `uint32` | **RAM Load Type** | For `.mlp`/`.db` = `0x00000000`. For `.idx` = `0x02000004` (LE: `0x04000002`) |
+| `0x08` | 4 | `uint32` | **RAM Load Type** | For `.mlp`/`.db`/`pois.idx` = `0x04000000` (LE: `b'\x00\x00\x00\x04'`). For `.idx` = `0x04000002` (LE: `b'\x02\x00\x00\x04'`) |
 | `0x0C` | 4 | `uint32` | **LOD 2 Section Size** | In bytes (Big-Endian). For `fseek` from EOF (fast pointer calculation). For `.mlp` and `.db` = `0x00000000` |
 | `0x10` | 16 | `byte[16]`| **MD5 Checksum** | Computed in hardware from the payload body (from `0x20` to EOF) |
 
 > **Exception for the POI layer (`pois.idx`):**
 > * **Offset `0x03` (Magic Extension):** Value is strictly `0x00`.
-> * **Offset `0x08` (RAM Load Type):** Takes the value `0x00 00 00 04` (Little-Endian: `0x04000000`), identical to `.mlp` and `.db` headers.
+> * **Offset `0x08` (RAM Load Type):** Takes the value `0x04000000` (Little-Endian: `b'\x00\x00\x00\x04'`), identical to `.mlp` and `.db` headers.
 
 ---
 
@@ -98,8 +98,10 @@ Contains the cartographic primitive itself. Unpacking format (Python): `<ffffIII
 
 > **POI Layer Anomaly (`pois.idx`):**
 > * The `pois.mlp` file does not exist.
+> * **Centroid Injection:** Closed polygons (e.g. buildings, shops) are dynamically converted to points during compilation by calculating their mathematical centroid.
 > * **Offset `0x00 - 0x0F` (Point Injection):** 32-bit Float coordinates are written directly into the BBox. Strict duplication is required: `minX == maxX` and `minY == maxY`.
-> * **Offset `0x14 - 0x17` (v1):** Ignored by the graphics parser when the topology marker is `0x01000000`. In factory maps, these are increasing values.
+> * **Offset `0x14 - 0x17` (v1):** Ignored by the graphics parser when the topology marker is `0x00000001` (`b'\x01\x00\x00\x00'`). In the current implementation, `v1` is forcefully set to `0`.
+> * **R-Tree Compression:** Large POI arrays now also utilize hierarchical R-Tree (STR) compression, similar to standard vector layers.
 
 #### 2. Nav Node (Navigation Node / Macro Node)**
 Открывает геометрию (Mode 0x00) или ветку иерархического R-дерева (Mode > 0x01).
@@ -140,6 +142,9 @@ The first physical data record in `.db` (145 bytes) **must strictly be filled wi
 * Named records are packed subsequently (`v2 = 2`, `v2 = 3`, etc.).
 * Each record begins with a `0x20` byte (dBase validity indicator).
 
+> **Skipping .db Creation:**
+> If a layer contains no named objects (and is not the POI layer), `.db` file creation is skipped entirely, and all features receive `v2 = 0`.
+
 > **Exception for the POI layer:**
 > In `pois.db`, the zero dummy record is absent. The first data record starts immediately after the `0x0D` terminator. 1-based indexing is applied: `v2 = 1` points to the first physical record. Unnamed POIs receive `v2 = 0`.
 
@@ -153,54 +158,54 @@ The first physical data record in `.db` (145 bytes) **must strictly be filled wi
 **OUTPUT:** Binary map layer file `.idx`.
 
 1. Initialize an empty byte buffer `idx_body`.
-2. Write the signature of the first LOD: `idx_body.extend(b"SQT\x01" + pack("<I", 1))`.
-3. Divide the input list of objects into spatial groups (Spatial Quad Tree) of up to 14 elements (depending on density).
-4. For each group of objects:
-   * Compute the common group BBox (min/max X and Y among all objects in the group).
-   * Compute `nav_v1`: for the 1st cluster = `0`. For subsequent ones = `v1` pointing to the absolute end of the previous cluster's geometry.
-   * Compute `nav_v2` = number of objects in the cluster.
-   * Compute `jump_v3` = `(number_of_objects_in_group * 28) + 8` (the `+8` offset compensates for prefetch).
-   * Pack Nav Node: `pack("<IffffII", jump_v3, MinX, MinY, MaxX, MaxY, nav_v1, nav_v2) -> idx_body`.
-   * For each object, pack a Data Node consecutively: `pack("<ffffIII", obj.MinX, obj.MinY, obj.MaxX, obj.MaxY, obj.code, obj.v1, obj.v2) -> idx_body`.
-5. Compile LOD 1 and LOD 2 sections.
-   * Navigation nodes are omitted if the section consists of <=14 objects.
-   * Nodes are always arranged consecutively without padding.
-   * If a LOD is empty, the section consists of exactly 16 bytes: `[SQT\x01] [00 00 00 00] [00 00 00 00] [00 00 00 00]`.
-6. Calculate `lod2_size` (exact size of the LOD 2 section).
-7. Generate YZL Header: `b"YZL\x0C" + pack("<I", len(idx_body)) + b"\x01\x00\x00\x04" + pack(">I", lod2_size) + MD5_Hash(16 bytes)`.
-8. Save YZL Header + `idx_body` to the file `LAYER_NAME.idx`.
+2. Apply Sort-Tile-Recursive (STR) Bulk Loading algorithm for hardware Z-Culling:
+   * Sort objects by X axis (Centroid longitude).
+   * Calculate mathematical slice limits (chunks of up to 14 elements).
+   * Cut vertical slices and sort them by Y axis (Centroid latitude).
+   * Pack into C-Union clusters (14 elements each) to form hierarchical R-Tree macro-nodes (Nav Nodes).
+3. For each node (recursive):
+   * Calculate the bounding rectangle (Enveloping BBox) for all children.
+   * Compute hardware jump `v3_jump` = size of the entire tree under this node + 8 bytes of prefetch compensation.
+4. Compile LOD 0, LOD 1, and LOD 2 sections.
+   * Prepend a 16-byte header: `b'SQT\x01\x01\x00\x00\x00'` + `pack("<II", depth, root_nodes_count)`.
+   * Nodes are always arranged consecutively.
+   * If a LOD is empty, the section consists of exactly 16 bytes: `[SQT\x01] [01 00 00 00] [00 00 00 00] [00 00 00 00]`.
+5. Calculate `lod2_size` (exact size of the LOD 2 section).
+6. Generate YZL Header and append `idx_body` to the file `LAYER_NAME.idx`.
 
 ### 5.2. Hardware Parsing Algorithm via State Machine
 
 ```python
+def parse_node(file, is_nav_node, current_level):
+    if not is_nav_node:
+        # Read Data Node
+        data_bytes = file.read(28)
+        xmin, ymin, xmax, ymax, obj_type, v1, v2 = struct.unpack("<ffffIII", data_bytes)
+        render_object(xmin, ymin, xmax, ymax, obj_type, v1, v2)
+        return
+
+    # Read Nav Node
+    nav_bytes = file.read(28)
+    v3_jump, c_xmin, c_ymin, c_xmax, c_ymax, nav_level, obj_count = struct.unpack("<IffffII", nav_bytes)
+
+    if not is_in_screen(c_xmin, c_ymin, c_xmax, c_ymax):
+        # Culling: Jump to the next Nav Node
+        # v3_jump ALREADY includes the +8 bytes of hardware pipeline prefetch compensation!
+        file.seek(v3_jump - 8, 1) # Equivalent to SEEK_CUR
+        return
+
+    # Cluster is visible, recursively read nested nodes
+    for _ in range(obj_count):
+        parse_node(file, nav_level > 0, nav_level - 1 if nav_level > 0 else 0)
+
 # 1. Read SQT header (16 bytes)
-magic, res, mode, count = struct.unpack("<IIII", file.read(16))
+magic, res, depth, count = struct.unpack("<IIII", file.read(16))
 
 if count == 0:
     return # Empty LOD, proceed to the next
 
-if mode == 0x00: # Flat List Mode
-    for _ in range(count):
-        node_bytes = file.read(28)
-        xmin, ymin, xmax, ymax, obj_type, v1, v2 = struct.unpack("<ffffIII", node_bytes)
-        render_object(xmin, ymin, xmax, ymax, obj_type, v1, v2)
-
-elif mode == 0x01: # Clustered Mode
-    for _ in range(count):
-        nav_bytes = file.read(28)
-        v3_jump, c_xmin, c_ymin, c_xmax, c_ymax, nav_v1, obj_count = struct.unpack("<IffffII", nav_bytes)
-        
-        if not is_in_screen(c_xmin, c_ymin, c_xmax, c_ymax):
-            # Culling: Jump to the next Nav Node
-            # v3_jump ALREADY includes the +8 bytes of hardware pipeline prefetch compensation!
-            file.seek(v3_jump - 8, 1) # Equivalent to SEEK_CUR
-            continue
-            
-        # Cluster is visible, read nested Data Nodes
-        for _ in range(obj_count):
-            data_bytes = file.read(28)
-            xmin, ymin, xmax, ymax, obj_type, v1, v2 = struct.unpack("<ffffIII", data_bytes)
-            render_object(xmin, ymin, xmax, ymax, obj_type, v1, v2)
+for _ in range(count):
+    parse_node(file, depth > 0, depth - 1 if depth > 0 else 0)
 ```
 
 ---
@@ -232,11 +237,11 @@ Each LOD level begins with a 16-byte header (state machine):
 | Offset | Field Description | Value / Format |
 | :--- | :--- | :--- |
 | `0x00 - 0x03` | **Signature** | `SQT\x01` (`53 51 54 01`) |
-| `0x04 - 0x07` | **Topology Marker** | `0x00000000` — Vector (read `.mlp`)<br>`0x01000000` — Point (read from BBox) |
+| `0x04 - 0x07` | **Topology Marker** | Strictly `0x00000001` (LE: `b'\x01\x00\x00\x00'`) for both Vector and Point modes. |
 | `0x08 - 0x0B` | LOD Mode Switch | `0x00` = Flat List<br>`0x01` = Одноуровневые кластеры<br>`>0x01` = Глубина R-дерева (Например, `0x05` означает 5 уровней вложенности Nav Nodes). |
 | `0x0C - 0x0F` | Count | Количество корневых узлов верхнего уровня (внутри текущего SQT-блока). |
 
-The boundary between detail levels is determined by the state machine logic (completion of batch reading). An empty section consists strictly of 16 bytes with `Mode = 0` and `Count = 0`. The POI layer is single-level (LOD 0 only); empty sections for it are not generated.
+The boundary between detail levels is determined by the state machine logic (completion of batch reading). An empty section consists strictly of 16 bytes with `Mode = 0` and `Count = 0`. The POI layer is single-level (LOD 0 only), but if the layer is completely empty, it will still generate a 16-byte empty header: `b'SQT\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'`.
 
 **LOD Connection to Z-Culling:** Objects are distributed across LODs according to thresholds. Objects with a `500 m` threshold are written to LOD 1, and `1000 m` to LOD 2.
 
