@@ -1,0 +1,9 @@
+# Europe
+belarus
+monaco
+andorra
+malta
+
+# Можно добавлять любые ID из Geofabrik, например:
+# cyprus
+# georgia

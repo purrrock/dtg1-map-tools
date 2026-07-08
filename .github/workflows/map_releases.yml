@@ -4,27 +4,38 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release Tag (e.g., v2.0.0-maps)'
+        description: 'Release Tag (e.g., v2.1.0-maps)'
         required: true
         default: 'latest-maps'
   schedule:
-    # Автоматический запуск 1-го числа каждого месяца в 00:00 UTC
     - cron: '0 0 1 * *'
 
 jobs:
+  # Задача 1: Чтение текстового файла и формирование динамической матрицы
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      regions: ${{ steps.set-regions.outputs.regions }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse regions.txt
+        id: set-regions
+        run: |
+          # Фильтруем пустые строки и комментарии, пакуем в JSON-массив через jq
+          REGIONS_JSON=$(grep -v '^[[:space:]]*$' regions.txt | grep -v '^#' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "Discovered regions: $REGIONS_JSON"
+          echo "regions=$REGIONS_JSON" >> $GITHUB_OUTPUT
+
+  # Задача 2: Параллельная сборка карт на основе полученной матрицы
   build-maps:
+    needs: prepare-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        region:
-          - name: belarus
-            url: https://download.geofabrik.de/europe/belarus-latest.osm.pbf
-          - name: andorra
-            url: https://download.geofabrik.de/europe/andorra-latest.osm.pbf
-          - name: malta
-            url: https://download.geofabrik.de/europe/malta-latest.osm.pbf
-          # Для крупных регионов (страны целиком) может потребоваться self-hosted runner из-за лимита в 7GB RAM
+        region: ${{ fromJson(needs.prepare-matrix.outputs.regions) }}
 
     steps:
       - name: Checkout repository
@@ -39,22 +50,23 @@ jobs:
       - name: Install System and Python Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool zip wget
+          sudo apt-get install -y osmium-tool zip wget jq curl
           pip install -r requirements.txt
 
       - name: Make build script executable
         run: chmod +x build_region.sh
 
-      - name: Build Map binaries for ${{ matrix.region.name }}
-        run: ./build_region.sh ${{ matrix.region.name }} ${{ matrix.region.url }}
+      - name: Build Map binaries for ${{ matrix.region }}
+        run: ./build_region.sh ${{ matrix.region }}
 
-      - name: Upload Artifact (Temporary Storage)
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.region.name }}-map-archive
-          path: ${{ matrix.region.name }}_dtg1_map.zip
+          name: ${{ matrix.region }}-map-archive
+          path: ${{ matrix.region }}_dtg1_map.zip
           retention-days: 1
 
+  # Задача 3: Публикация релиза
   publish-release:
     needs: build-maps
     runs-on: ubuntu-latest
@@ -65,7 +77,7 @@ jobs:
           path: ./map_archives
           merge-multiple: true
 
-      - name: Generate Release Tag (if scheduled)
+      - name: Generate Release Tag
         id: tag_gen
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -79,7 +91,7 @@ jobs:
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: "Offline Maps Update - ${{ env.TAG_NAME }}"
-          body: "Pre-compiled offline maps for DT NO.1 G1 (ATS3085S) smartwatches. Generated from the latest OpenStreetMap data."
+          body: "Pre-compiled offline maps for DT NO.1 G1 (ATS3085S) smartwatches. Optimized topologies included."
           files: ./map_archives/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
