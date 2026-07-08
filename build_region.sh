@@ -19,10 +19,14 @@ echo "2. Downloading PBF data from $PBF_URL..."
 wget -qO raw.osm.pbf "$PBF_URL"
 
 echo "3. Hardware Pre-culling (osmium tags-filter)..."
-# КРИТИЧЕСКИ ВАЖНО: Обрезаем все лишнее до конвертации в XML, чтобы не получить Out-Of-Memory в Python
+# Используем префикс nwr/ (Node, Way, Relation), чтобы не потерять полигональные POI.
+# Тег building намеренно исключен: osmium аппаратно отсечет миллионы простых домов,
+# но пропустит те здания, которые имеют теги из списков amenity, shop и т.д.
 osmium tags-filter raw.osm.pbf \
-    w/highway w/landuse w/waterway w/natural=water w/building \
-    n/amenity n/shop n/tourism n/leisure \
+    nwr/highway nwr/landuse nwr/waterway nwr/natural nwr/barrier \
+    nwr/railway nwr/aeroway nwr/man_made nwr/route \
+    nwr/amenity nwr/shop nwr/leisure nwr/tourism nwr/sport \
+    nwr/historic nwr/craft nwr/office nwr/healthcare nwr/emergency \
     -o filtered.osm.pbf -f pbf --overwrite
 
 echo "4. Binary to XML Serialization..."
