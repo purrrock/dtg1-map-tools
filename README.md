@@ -102,9 +102,9 @@ The compiler implements the management of the Points of Interest (POI) layer, th
 Available flags:
 * `-h`, `--help` — Output reference information on available arguments.
 * `-p MODE`, `--poi-mode MODE` — Generation mode for the Points of Interest (POI) database.
-    * `none` (default) — Completely ignore POIs during the build. Protects the database from bloating.
+    * `none` — Completely ignore POIs during the build. Protects the database from bloating.
     * `native` — Generate original `pois.idx` and `pois.db` binaries. Useful for testing firmware reaction.
-    * `landuse` — Integrate POIs into the landuse layer via dynamic shape baking.
+    * `landuse` (default) — Integrate POIs into the landuse layer via dynamic shape baking.
 
 ---
 
