@@ -1,8 +1,20 @@
 # Europe
 belarus
-monaco
-andorra
-malta
+alps
+spain
+taiwan
+ukraine
+central-fed-district
+crimean-fed-district
+far-eastern-fed-district
+Kaliningrad
+north-caucasus-fed-district
+northwestern-fed-district
+siberian-fed-district
+south-fed-district
+ural-fed-district
+volga-fed-district
+russia
 
 # Можно добавлять любые ID из Geofabrik, например:
 # cyprus

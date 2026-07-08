@@ -42,7 +42,7 @@ mv map_optimized.osm map.osm
 
 echo "7. Compiling ATS3085S Binaries..."
 # Запуск без параметров, I/O операции происходят в корне
-python -u dtg1_map_compiler.py
+python dtg1_map_compiler.py
 
 echo "8. Packaging Distribution Archive..."
 zip -r "${REGION_NAME}_dtg1_map.zip" *.mlp *.idx *.db map.name

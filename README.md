@@ -4,9 +4,10 @@
 🇷🇺 [Читать на русском](README_ru.md)
 
 If you are looking for **how to install custom maps on a smartwatch** or need better **DT NO.1 G1 offline maps** to sync via the **WearPro** app, this project provides a complete open-source solution. 
+➡️ **[Download Pre-Compiled Offline Maps (Ready to copy to watch)]** [![GitHub release](https://img.shields.io/badge/Maps-latest--maps-blue)](https://github.com/purrrock/dtg1-map-tools/releases/tag/latest-maps)
 ➡️ **[Download the ready-made compiler (.EXE) for Windows]** [![GitHub release](https://img.shields.io/github/v/release/purrrock/dtg1-map-tools?color=green)](https://github.com/purrrock/dtg1-map-tools/releases/latest)
 
-A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for DT NO.1 G1, VWAR, KKTICK and Amolde smartwatches (as well as other white-label devices based on the Actions Semiconductor ATS3085S hardware platform). If you are looking for how to install custom maps on a smartwatch or need better DT NO.1 G1 offline maps to sync via the WearPro app, this project provides a complete open-source solution.
+A set of Python utilities for reverse engineering, analyzing, and compiling custom offline maps for DT NO.1 G1, VWAR, KKTICK and Amolde smartwatches (as well as other white-label devices based on the Actions Semiconductor ATS3085S hardware platform). 
 The toolset allows building your own highly detailed maps from open sources (e.g., OpenStreetMap). These custom maps are natively hardware-supported and perfectly rendered by the watch's built-in graphics engine. 
 
 > **⚠️ Disclaimer:** This is an unofficial project created exclusively through reverse engineering ("black box" and byte-by-byte analysis of memory dumps). The use of these utilities and flashing of modified files to the watch is done at your own risk.
@@ -63,26 +64,30 @@ If you use the contours feature, you MUST configure your `features.csv`. Read `/
 
 ---
 
-## 🛠 Installation and Quick Start
+## 📥 Download & Usage
 
-The compiler now supports both running from Python source code and compiling into a standalone executable!
+We provide ready-to-use maps for popular regions, as well as tools to build your own custom areas. Choose the option that best fits your needs:
 
-### Option A: Standalone Executable (Windows Only)
-Perfect for regular users. No Python installation required!
-1. Place `dtg1_map_compiler.exe`, the `features.csv` file, and your source map.osm data into any convenient folder.
-2. Run the executable via command line (e.g., `dtg1_map_compiler.exe`).
+### Option A: Download Pre-Compiled Maps (Easiest)
+Regularly updated, ready-to-use map packages for entire countries and regions. No installation or compilation required.
+1. Go to the [**Latest Map Releases**](https://github.com/purrrock/dtg1-map-tools/releases/tag/latest-maps) page.
+2. Download the `.zip` archive for your desired region (e.g., `belarus_dtg1_map.zip`).
+3. Extract the archive and copy the files (`roads.mlp`, `roads.idx`, `landuse.db`, `map.name`) directly to your watch's internal memory via USB (usually into the `MAP/Map_Name` folder).
 
-### Option B: Running from Source (Developers & Cross-Platform)
+### Option B: Standalone Compiler Executable (Windows Only)
+Perfect if you want to compile a custom bounding box or inject a personal GPX route. No Python required.
+1. [Download the latest Windows compiler release](https://github.com/purrrock/dtg1-map-tools/releases/latest).
+2. Export your desired map area from [OpenStreetMap](https://www.openstreetmap.org/export) as `map.osm`.
+3. Place `dtg1_map_compiler.exe`, the `features.csv` file, and your `map.osm` data into a single folder.
+4. Run the executable via command line (e.g., `dtg1_map_compiler.exe`).
+5. Copy the output binary files to your watch.
+
+### Option C: Running from Source (Developers & Cross-Platform)
 1. Ensure you have Python 3.10 or higher installed.
-2. Download the repository with all its modular Python files.
-3. Install the required external libraries by running `pip install -r requirements.txt`.
-
-### Standard Compilation Workflow
-1. Export the desired map area from https://www.openstreetmap.org/export in XML format.
-2. Rename the downloaded file to `map.osm` and place it in the working directory next to the compiler.
-3. Run the script: `python dtg1_map_compiler.py -p landuse`
-4. The compiled binary files (`roads.mlp`, `roads.idx`, `landuse.db`, `map.name`, etc.) will appear in the current directory.
-5. Copy these generated files to the internal memory of the watch (usually into the `MAP/Map_Name` folder via USB connection).
+2. Clone the repository and install dependencies: `pip install -r requirements.txt`.
+3. Place your exported `map.osm` file in the working directory next to the compiler.
+4. Run the script: `python dtg1_map_compiler.py`.
+5. Copy the generated files (`roads.mlp`, `roads.idx`, `landuse.db`, `map.name`) to the watch via USB.
 
 ---
 
@@ -164,5 +169,5 @@ The repository includes internal scripts used during the reverse engineering of 
 
 The core compilation engine is now stable. Our next major goal is to transform this CLI tool into a user-friendly "Map-as-a-Service" platform for the smartwatch community.
 
-* [ ] **Pre-compiled Map Archives:** Regularly updated, ready-to-download map packages for entire countries or popular tourist regions. These will be hosted directly in GitHub Releases — no Python installation required for end-users.
+* [x] **Pre-compiled Map Archives:** Regularly updated, ready-to-download map packages for entire countries or popular tourist regions. Hosted directly in GitHub Releases — no compilation required for end-users.
 * [ ] **Web-based GUI Generator:** A browser-based interface where users can select a custom Bounding Box (up to 50x50 km), toggle specific layers/POIs, upload their GPX track for injection, and compile the map on-demand via a backend connected to the Overpass API.
