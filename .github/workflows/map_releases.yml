@@ -95,5 +95,6 @@ jobs:
           name: "Offline Maps Update - ${{ env.TAG_NAME }}"
           body: "Pre-compiled offline maps for DT NO.1 G1 (ATS3085S) smartwatches. Optimized topologies included."
           files: ./map_archives/*.zip
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
