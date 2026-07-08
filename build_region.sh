@@ -30,7 +30,7 @@ echo "4. Binary to XML Serialization..."
 osmium cat filtered.osm.pbf -o map.osm -f osm --overwrite
 
 echo "5. Topology Optimization (osm_optimizer.py)..."
-python osm_optimizer.py
+python -u osm_optimizer.py
 
 echo "6. Environment Preparation..."
 # Компилятор ожидает файл "map.osm", поэтому подменяем исходник оптимизированной версией
@@ -38,7 +38,7 @@ mv map_optimized.osm map.osm
 
 echo "7. Compiling ATS3085S Binaries..."
 # Запуск без параметров, I/O операции происходят в корне
-python dtg1_map_compiler.py
+python -u dtg1_map_compiler.py
 
 echo "8. Packaging Distribution Archive..."
 zip -r "${REGION_NAME}_dtg1_map.zip" *.mlp *.idx *.db map.name
