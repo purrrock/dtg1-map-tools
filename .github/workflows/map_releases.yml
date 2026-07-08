@@ -1,0 +1,85 @@
+name: Compile and Publish Regional Maps
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag (e.g., v2.0.0-maps)'
+        required: true
+        default: 'latest-maps'
+  schedule:
+    # Автоматический запуск 1-го числа каждого месяца в 00:00 UTC
+    - cron: '0 0 1 * *'
+
+jobs:
+  build-maps:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        region:
+          - name: belarus
+            url: https://download.geofabrik.de/europe/belarus-latest.osm.pbf
+          - name: andorra
+            url: https://download.geofabrik.de/europe/andorra-latest.osm.pbf
+          - name: malta
+            url: https://download.geofabrik.de/europe/malta-latest.osm.pbf
+          # Для крупных регионов (страны целиком) может потребоваться self-hosted runner из-за лимита в 7GB RAM
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install System and Python Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool zip wget
+          pip install -r requirements.txt
+
+      - name: Make build script executable
+        run: chmod +x build_region.sh
+
+      - name: Build Map binaries for ${{ matrix.region.name }}
+        run: ./build_region.sh ${{ matrix.region.name }} ${{ matrix.region.url }}
+
+      - name: Upload Artifact (Temporary Storage)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.region.name }}-map-archive
+          path: ${{ matrix.region.name }}_dtg1_map.zip
+          retention-days: 1
+
+  publish-release:
+    needs: build-maps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all Map Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./map_archives
+          merge-multiple: true
+
+      - name: Generate Release Tag (if scheduled)
+        id: tag_gen
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "TAG_NAME=maps-$(date +'%Y-%m')" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=${{ github.event.inputs.release_tag }}" >> $GITHUB_ENV
+          fi
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: "Offline Maps Update - ${{ env.TAG_NAME }}"
+          body: "Pre-compiled offline maps for DT NO.1 G1 (ATS3085S) smartwatches. Generated from the latest OpenStreetMap data."
+          files: ./map_archives/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
