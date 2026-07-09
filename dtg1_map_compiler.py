@@ -4,7 +4,7 @@
 """
 DT G1 Map Compiler (Platform ATS3085S)
 ===============================================
-v1.4.0 (Fully Modular Architecture)
+v1.5.0 (Fully Modular Architecture)
 Main orchestrator. Converts OpenStreetMap (XML) data into closed binary formats
 of DT NO.1 G1 smartwatches (.mlp, .idx, .db).
 """

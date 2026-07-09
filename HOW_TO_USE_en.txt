@@ -1,7 +1,7 @@
 ========================================================================
  INSTRUCTIONS FOR CREATING AND INSTALLING CUSTOM MAPS FOR SMARTWATCHES
-   DT NO.1 G1 / VWAR / KKTICK (Actions ATS3085S Hardware Platform)
-                      Utility version: v1.4.0
+   DT NO.1 G1 / VWAR / KKTICK / Amolde HD300 Pro (Actions ATS3085S Hardware Platform)
+                      Utility version: v1.5.0
 ========================================================================
 
 This utility allows you to compile your own detailed offline map of any 
