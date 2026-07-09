@@ -69,6 +69,7 @@ jobs:
 # Задача 3: Публикация релиза (Rolling Release: перезапись файлов)
   publish-release:
     needs: build-maps
+    if: success() || failure()  # Даже если не все карты собрались - делать релиз
     runs-on: ubuntu-latest
     permissions:
       contents: write
