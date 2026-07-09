@@ -108,9 +108,22 @@ class OSMParser:
         self._pass2_build_features()
         return self.roads, self.landuse, self.pois
 
+    def _get_total_nodes(self) -> int:
+        """Fast binary count of <node tags to estimate total nodes."""
+        total = 0
+        try:
+            with open(self.osm_file, 'rb') as f:
+                for chunk in iter(lambda: f.read(1024 * 1024 * 16), b''):
+                    total += chunk.count(b'<node')
+        except Exception:
+            pass
+        return total
+
     def _pass1_cache_nodes(self) -> None:
         """Cache node geometry (micro-optimized for the Python VM's C backend)."""
         print("[>] Pass 1: Caching nodes...")
+        total_nodes = self._get_total_nodes()
+        total_str = f" / {total_nodes:,}" if total_nodes > 0 else ""
         context = ET.iterparse(self.osm_file, events=('start', 'end'))
         context = iter(context)
 
@@ -132,7 +145,7 @@ class OSMParser:
                     count += 1
 
                     if not (count & 0x1FFFF):
-                        print(f"\r    Nodes cached: {count:,}", end="", flush=True)
+                        print(f"\r    Nodes cached: {count:,}{total_str}", end="", flush=True)
 
                 if elem.tag in TARGET_TAGS:
                     elem.clear()
