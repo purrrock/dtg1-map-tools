@@ -34,12 +34,13 @@ echo "4. Binary to XML Serialization..."
 # Конвертируем уже легковесный PBF в XML
 osmium cat filtered.osm.pbf -o map.osm -f osm --overwrite
 rm -f filtered.osm.pbf
+
 # echo "5. Topology Optimization (osm_optimizer.py)..."
 # python -u osm_optimizer.py
 
-echo "6. Environment Preparation..."
+#echo "6. Environment Preparation..."
 # Компилятор ожидает файл "map.osm", поэтому подменяем исходник оптимизированной версией
-mv map_optimized.osm map.osm
+# mv map_optimized.osm map.osm
 
 echo "7. Compiling ATS3085S Binaries..."
 # Запуск без параметров, I/O операции происходят в корне
