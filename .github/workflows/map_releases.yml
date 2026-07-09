@@ -66,7 +66,7 @@ jobs:
           path: ${{ matrix.region }}_dtg1_map.zip
           retention-days: 1
 
-  # Задача 3: Публикация релиза
+# Задача 3: Публикация релиза (Rolling Release: перезапись файлов)
   publish-release:
     needs: build-maps
     runs-on: ubuntu-latest
@@ -79,22 +79,11 @@ jobs:
           path: ./map_archives
           merge-multiple: true
 
-      - name: Generate Release Tag
-        id: tag_gen
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "TAG_NAME=maps-$(date +'%Y-%m')" >> $GITHUB_ENV
-          else
-            echo "TAG_NAME=${{ github.event.inputs.release_tag }}" >> $GITHUB_ENV
-          fi
-
-      - name: Publish to GitHub Releases
+      - name: Publish to GitHub Releases (Overwrite)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: "Offline Maps Update - ${{ env.TAG_NAME }}"
-          body: "Pre-compiled offline maps for DT NO.1 G1 (ATS3085S) smartwatches. Optimized topologies included."
+          tag_name: "latest-maps"
+          name: "Offline Maps Update (Latest)"
+          body: "Pre-compiled offline maps for DT NO.1 G1 (ATS3085S) smartwatches. These files are automatically re-generated every month from the newest OpenStreetMap data."
           files: ./map_archives/*.zip
           make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
