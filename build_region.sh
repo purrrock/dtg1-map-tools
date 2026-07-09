@@ -35,6 +35,11 @@ echo "4. Binary to XML Serialization..."
 osmium cat filtered.osm.pbf -o map.osm -f osm --overwrite
 rm -f filtered.osm.pbf
 
+echo "-> Counting nodes for progress tracking..."
+# Быстрый подсчет строк, начинающихся с <node, и запись в переменную окружения
+export TOTAL_NODES=$(grep -c '^[[:space:]]*<node' map.osm || echo 0)
+echo "-> Total nodes to process: $TOTAL_NODES"
+
 # echo "5. Topology Optimization (osm_optimizer.py)..."
 # python -u osm_optimizer.py
 
