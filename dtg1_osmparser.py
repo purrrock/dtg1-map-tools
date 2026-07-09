@@ -110,7 +110,15 @@ class OSMParser:
 
     def _pass1_cache_nodes(self) -> None:
         """Cache node geometry (micro-optimized for the Python VM's C backend)."""
-        print("[>] Pass 1: Caching nodes...")
+        # Читаем переменную, установленную Bash-скриптом. Если её нет (например, при запуске на Windows локально), ставим None.
+        total_nodes_str = os.environ.get('TOTAL_NODES', None)
+        total_nodes = int(total_nodes_str) if total_nodes_str and total_nodes_str.isdigit() else None
+
+        if total_nodes:
+            print(f"[>] Pass 1: Caching nodes... (0 / {total_nodes})")
+        else:
+            print("[>] Pass 1: Caching nodes...")
+    
         context = ET.iterparse(self.osm_file, events=('start', 'end'))
         context = iter(context)
 
