@@ -28,13 +28,14 @@ osmium tags-filter raw.osm.pbf \
     nwr/amenity nwr/shop nwr/leisure nwr/tourism nwr/sport \
     nwr/historic nwr/craft nwr/office nwr/healthcare nwr/emergency \
     -o filtered.osm.pbf -f pbf --overwrite
+rm -f raw.osm.pbf
 
 echo "4. Binary to XML Serialization..."
 # Конвертируем уже легковесный PBF в XML
 osmium cat filtered.osm.pbf -o map.osm -f osm --overwrite
-
-echo "5. Topology Optimization (osm_optimizer.py)..."
-python -u osm_optimizer.py
+rm -f filtered.osm.pbf
+# echo "5. Topology Optimization (osm_optimizer.py)..."
+# python -u osm_optimizer.py
 
 echo "6. Environment Preparation..."
 # Компилятор ожидает файл "map.osm", поэтому подменяем исходник оптимизированной версией
@@ -43,6 +44,7 @@ mv map_optimized.osm map.osm
 echo "7. Compiling ATS3085S Binaries..."
 # Запуск без параметров, I/O операции происходят в корне
 python dtg1_map_compiler.py
+rm -f map.osm
 
 echo "8. Packaging Distribution Archive..."
 zip -r "${REGION_NAME}_dtg1_map.zip" *.mlp *.idx *.db map.name
