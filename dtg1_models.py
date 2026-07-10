@@ -3,7 +3,7 @@
 
 import struct
 from dataclasses import dataclass, field
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Sequence
 
 
 class HWConfig:
@@ -33,7 +33,9 @@ def safe_encode(text: Any, max_len: int) -> bytes:
     return b[:max_len].decode('utf-8', 'ignore').encode('utf-8')
 
 
-@dataclass
+# [MEMORY OPTIMIZATION 1]: Указание slots=True предотвращает создание __dict__ и __weakref__
+# Это экономит ~56-64 байта чистой памяти на каждом экземпляре класса.
+@dataclass(slots=True)
 class MapFeature:
     """Represents a single map primitive (Road, Polygon, POI)"""
     osm_id: str
@@ -41,7 +43,10 @@ class MapFeature:
     code: int
     name: str
     points: List[Tuple[float, float]]
-    parts: List[int] = field(default_factory=lambda: [0])
+    
+    # [MEMORY OPTIMIZATION 2]: Используем иммутабельный (неизменяемый) кортеж по умолчанию.
+    # Это позволяет всем миллионам объектов без multipolygon ссылаться на один и тот же (0,) в памяти.
+    parts: Sequence[int] = (0,)
 
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     v1: int = 0        # Absolute geometry offset in the .mlp file
@@ -49,12 +54,24 @@ class MapFeature:
     mlp_size: int = 0  # Binary body size in the .mlp file
 
     def calculate_bbox(self) -> None:
-        """Direct bounding box calculation (optimized with list comprehensions)."""
+        """Direct bounding box calculation (optimized O(N) single pass)."""
         if not self.points:
             return
-        xs = [p[0] for p in self.points]
-        ys = [p[1] for p in self.points]
-        self.bbox = (min(xs), min(ys), max(xs), max(ys))
+            
+        # [MEMORY OPTIMIZATION 3]: Отказ от List Comprehension. 
+        # Проходим по массиву координат ровно один раз (O(N)), не выделяя память под временные списки.
+        p0 = self.points[0]
+        minx, miny = p0[0], p0[1]
+        maxx, maxy = p0[0], p0[1]
+        
+        for x, y in self.points[1:]:
+            if x < minx: minx = x
+            elif x > maxx: maxx = x
+            
+            if y < miny: miny = y
+            elif y > maxy: maxy = y
+            
+        self.bbox = (minx, miny, maxx, maxy)
 
     def pack_data_node(self) -> bytes:
         """
@@ -68,7 +85,8 @@ class MapFeature:
         )
 
 
-@dataclass
+# Распространяем паттерн __slots__ на узлы R-Дерева
+@dataclass(slots=True)
 class RTreeNode:
     """
     Represents a Hierarchical Macro-Node (Nav Node) for the Spatial Quadrant Tree.
@@ -81,11 +99,23 @@ class RTreeNode:
     bin_size: int = field(init=False)
 
     def __post_init__(self):
-        # 1. Calculating the bounding rectangle (Enveloping BBox)
-        minx = min(c.bbox[0] for c in self.children)
-        miny = min(c.bbox[1] for c in self.children)
-        maxx = max(c.bbox[2] for c in self.children)
-        maxy = max(c.bbox[3] for c in self.children)
+        # [MEMORY OPTIMIZATION 4]: Аналогичный O(N) проход для Macro-Nodes
+        if not self.children:
+            self.bbox = (0.0, 0.0, 0.0, 0.0)
+            self.v3_jump = 8
+            self.bin_size = HWConfig.NODE_SIZE
+            return
+
+        c0_bbox = self.children[0].bbox
+        minx, miny, maxx, maxy = c0_bbox[0], c0_bbox[1], c0_bbox[2], c0_bbox[3]
+
+        for c in self.children[1:]:
+            cb = c.bbox
+            if cb[0] < minx: minx = cb[0]
+            if cb[1] < miny: miny = cb[1]
+            if cb[2] > maxx: maxx = cb[2]
+            if cb[3] > maxy: maxy = cb[3]
+
         self.bbox = (minx, miny, maxx, maxy)
 
         # 2. Calculating the size of the child subtree in bytes
