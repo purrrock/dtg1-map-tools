@@ -160,34 +160,42 @@ class OSMParser:
         else:
             print("[>] Pass 1: Caching nodes...")
         
-        # [CRITICAL]: Disable GC to prevent CPU thrashing during massive array appends
+        # Отключаем GC для предотвращения CPU Thrashing
         gc.disable()
         
-        # We only care about nodes in Pass 1
-        context = ET.iterparse(self.osm_file, events=('end',), tag='node')
+        # [CRITICAL]: УБРАН ФИЛЬТР tag='node'. Мы должны получать все элементы,
+        # чтобы очищать их из памяти и поймать границу перехода к линиям.
+        context = ET.iterparse(self.osm_file, events=('end',))
         
         node_ids_append = self.node_ids.append
         node_coords_append = self.node_coords.append
 
         count = 0
         for event, elem in context:
-            try:
-                node_ids_append(int(elem.get('id')))
-                node_coords_append(float(elem.get('lon')))
-                node_coords_append(float(elem.get('lat')))
-            except (TypeError, ValueError):
-                pass
-            
-            count += 1
-            if not (count & 0x1FFFF):
-                print(f"\r    Nodes cached: {count:,}", end="", flush=True)
+            if elem.tag == 'node':
+                try:
+                    node_ids_append(int(elem.get('id')))
+                    node_coords_append(float(elem.get('lon')))
+                    node_coords_append(float(elem.get('lat')))
+                except (TypeError, ValueError):
+                    pass
+                
+                count += 1
+                if not (count & 0x1FFFF):
+                    print(f"\r    Nodes cached: {count:,}", end="", flush=True)
 
-            # [CRITICAL]: lxml C-level memory deallocation
+            elif elem.tag == 'way':
+                # [СУПЕР-ОПТИМИЗАЦИЯ]: Формат OSM строго упорядочен (Nodes -> Ways -> Relations).
+                # Первый встреченный 'way' означает, что все миллионы узлов уже прочитаны.
+                # Мы немедленно прерываем чтение гигабайтного файла.
+                break
+
+            # Универсальная и пуленепробиваемая C-level очистка памяти
             elem.clear()
             while elem.getprevious() is not None:
                 del elem.getparent()[0]
 
-        # Re-enable GC and flush tree
+        # Включаем сборщик и принудительно очищаем остатки
         gc.enable()
         gc.collect()
         print(f"\r    Nodes loaded into Arrays: {len(self.node_ids):,}        ")
@@ -196,7 +204,7 @@ class OSMParser:
         """Assemble primitives by topology."""
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
         
-        # We process 'node' (for POIs), 'way', and 'relation'
+        # Снова без фильтров, чтобы вычищать мусорные теги (bounds, meta)
         context = ET.iterparse(self.osm_file, events=('end',))
 
         processors = {
@@ -215,10 +223,10 @@ class OSMParser:
                 if not (count & 0x3FFF):
                     print(f"\r    Elements processed: {count:,}", end="", flush=True)
 
-                # Clear processed elements to save RAM
-                elem.clear()
-                while elem.getprevious() is not None:
-                    del elem.getparent()[0]
+            # Тотальная очистка ВСЕХ узлов файла
+            elem.clear()
+            while elem.getprevious() is not None:
+                del elem.getparent()[0]
 
         print(f"\r    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).      ")
 
