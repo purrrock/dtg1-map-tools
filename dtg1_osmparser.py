@@ -111,8 +111,12 @@ class OSMParser:
         
         # [MEMORY OPTIMIZATION 2]: Way Pool (Flattened coordinates to save 4-5GB of RAM)
         self.way_coords_pool = array.array('d')
-        # ways_cache stores only (start_index, length) metadata
-        self.ways_cache: Dict[int, Tuple[int, int]] = {}
+        # ways_cache replaced with parallel arrays to prevent dict memory bloat
+        self.way_cache_ids = array.array('q')
+        self.way_cache_starts = array.array('q')
+        self.way_cache_lengths = array.array('i')
+        self._ways_sorted = True
+        self._last_way_id = -1
         
         self._nodes_freed = False
 
@@ -255,6 +259,26 @@ class OSMParser:
                 print("\n    [!] Reaching Relations. Ejecting Node Cache to free RAM...", flush=True)
                 self.node_ids = None
                 self.node_coords = None
+
+                if not self._ways_sorted:
+                    print("\r    [!] Ways are unsorted. Indexing arrays (may take some memory)...", flush=True)
+                    indices = list(range(len(self.way_cache_ids)))
+                    indices.sort(key=lambda i: self.way_cache_ids[i])
+
+                    new_ids = array.array('q', [0]) * len(self.way_cache_ids)
+                    new_starts = array.array('q', [0]) * len(self.way_cache_starts)
+                    new_lengths = array.array('i', [0]) * len(self.way_cache_lengths)
+
+                    for new_i, old_i in enumerate(indices):
+                        new_ids[new_i] = self.way_cache_ids[old_i]
+                        new_starts[new_i] = self.way_cache_starts[old_i]
+                        new_lengths[new_i] = self.way_cache_lengths[old_i]
+
+                    self.way_cache_ids = new_ids
+                    self.way_cache_starts = new_starts
+                    self.way_cache_lengths = new_lengths
+                    del indices
+
                 gc.collect()
                 self._nodes_freed = True
 
@@ -357,7 +381,14 @@ class OSMParser:
             # [C-ARRAY FLATTENING]: Replaces massive List[Tuple] overhead with ultra-fast contiguous memory
             start_idx = len(self.way_coords_pool)
             self.way_coords_pool.extend(itertools.chain.from_iterable(points))
-            self.ways_cache[way_id] = (start_idx, len(points))
+
+            self.way_cache_ids.append(way_id)
+            self.way_cache_starts.append(start_idx)
+            self.way_cache_lengths.append(len(points))
+
+            if self._ways_sorted and way_id < self._last_way_id:
+                self._ways_sorted = False
+            self._last_way_id = way_id
             
         except (TypeError, ValueError):
             return
@@ -494,9 +525,11 @@ class OSMParser:
                     ref = int(member.get('ref'))
                     role = member.get('role', 'outer')
 
-                    if ref in self.ways_cache:
+                    idx = bisect.bisect_left(self.way_cache_ids, ref)
+                    if idx < len(self.way_cache_ids) and self.way_cache_ids[idx] == ref:
                         # [C-ARRAY UNFLATTENING]: Reconstructing geometries at memory-safe speed
-                        start_idx, length = self.ways_cache[ref]
+                        start_idx = self.way_cache_starts[idx]
+                        length = self.way_cache_lengths[idx]
                         end_idx = start_idx + (length * 2)
                         flat_coords = self.way_coords_pool[start_idx:end_idx]
                         
