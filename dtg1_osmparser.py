@@ -6,12 +6,13 @@ import sys
 import gc
 import re
 import array
-from lxml import etree as ET  # C-level XML parsing with automatic garbage collection
+import bisect
+from lxml import etree as ET
 from functools import lru_cache
 from typing import List, Tuple, Dict, Optional
 
-from dtg1_models import MapFeature, HWConfig
-from dtg1_geometry import is_clockwise, reverse_array_inplace
+from dtg1_models import MapFeature, HWConfig, safe_encode
+from dtg1_geometry import is_clockwise
 from dtg1_lookup import LookupTables
 
 # Global immutable tuple of toponymic descriptors.
@@ -35,10 +36,9 @@ _STOP_WORDS_RX = re.compile(
     re.IGNORECASE
 )
 
-
 @lru_cache(maxsize=32768)
 def _sanitize_name_cached(name: str) -> str:
-    """Cached name sanitization for POI centroid extraction."""
+    """Cached name sanitization for POI centroid extraction and UI rendering."""
     if not name:
         return ""
     
@@ -50,18 +50,19 @@ def _sanitize_name_cached(name: str) -> str:
         if core_name:
             core_name = core_name[0].upper() + core_name[1:]
             name = f"{core_name} {word.lower()}"
-    
+
     name = name.replace(" ", "_")
-    
-    # 1. Limit for UI (characters).
+
+    # Limit for UI (characters)
     if len(name) > 22:
         name = name[:20].rstrip('_') + ".."
-    
-    # 2. Limit for DB .db (bytes).
+
+    # Limit for DB .db (bytes)
     encoded_name = name.encode('utf-8')
     if len(encoded_name) > 100:
-        name = encoded_name[:100].decode('utf-8', 'ignore').rstrip('_')
-    
+        name_bytes = safe_encode(name, 100)
+        name = name_bytes.decode('utf-8', 'ignore').rstrip('_')
+
     return name
 
 
@@ -77,31 +78,36 @@ class GPXParser:
         root = tree.getroot()
         ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}
 
-        # Cascading name lookup
         track_name = "Route"
-        metadata_name = root.find('.//gpx:metadata/gpx:name', ns)
+        metadata_name = root.find('.//gpx:metadata/gpx:name', namespaces=ns)
         if metadata_name is not None and metadata_name.text:
             track_name = metadata_name.text.strip()
         else:
-            trk_name = root.find('.//gpx:trk/gpx:name', ns)
+            trk_name = root.find('.//gpx:trk/gpx:name', namespaces=ns)
             if trk_name is not None and trk_name.text:
                 track_name = trk_name.text.strip()
 
-        # Geometry extraction
         points = []
-        for trkpt in root.findall('.//gpx:trkpt', ns):
-            points.append((float(trkpt.attrib['lon']), float(trkpt.attrib['lat'])))
+        for trkpt in root.findall('.//gpx:trkpt', namespaces=ns):
+            try:
+                points.append((float(trkpt.get('lon')), float(trkpt.get('lat'))))
+            except (ValueError, TypeError):
+                continue
 
         return track_name, points
 
 
 class OSMParser:
-    """Two-pass streaming OSM parser with topology handling (lxml-optimized)."""
-    RESTRICTED_ACCESS_VALUES = frozenset({'private', 'permit', 'no'})
+    """Two-pass streaming OSM parser with hybrid memory optimization (C-Arrays + lxml)."""
+    RESTRICTED_ACCESS_VALUES = {'private', 'permit', 'no'}
 
     def __init__(self, osm_file: str):
         self.osm_file = osm_file
-        self.nodes: Dict[int, Tuple[float, float]] = {}
+        
+        # [MEMORY OPTIMIZATION]: Contiguous C-Arrays to survive GitHub Actions 7GB RAM limit
+        self.node_ids = array.array('q')    # 64-bit signed int for OSM IDs
+        self.node_coords = array.array('d') # 64-bit float interleaved [lon0, lat0, lon1, lat1...]
+        
         self.ways_cache: Dict[int, List[Tuple[float, float]]] = {}
 
         self.roads: List[MapFeature] = []
@@ -110,14 +116,9 @@ class OSMParser:
 
     @staticmethod
     def _is_clockwise(points: List[Tuple[float, float]]) -> bool:
-        """Delegate to shared CW check (negative oriented area => CW)."""
         return is_clockwise(points)
 
     def _analyze_road_surface(self, tags: Dict[str, str]) -> Optional[str]:
-        """
-        Analyzes road quality and surface tags.
-        Priority is given to the smoothness tag.
-        """
         smoothness = tags.get("smoothness")
         if smoothness in {"bad", "very_bad", "horrible", "very_horrible", "impassable"}:
             return "unpaved"
@@ -141,8 +142,16 @@ class OSMParser:
         self._pass2_build_features()
         return self.roads, self.landuse, self.pois
 
+    def _get_node_coord(self, node_id: int) -> Optional[Tuple[float, float]]:
+        """O(log N) binary search for node coordinates in C-Arrays."""
+        idx = bisect.bisect_left(self.node_ids, node_id)
+        if idx < len(self.node_ids) and self.node_ids[idx] == node_id:
+            coord_idx = idx * 2
+            return (self.node_coords[coord_idx], self.node_coords[coord_idx + 1])
+        return None
+
     def _pass1_cache_nodes(self) -> None:
-        """Cache node geometry with lxml C-level memory deallocation."""
+        """Cache node geometry natively (Array Structs) using lxml."""
         total_nodes_str = os.environ.get('TOTAL_NODES', None)
         total_nodes = int(total_nodes_str) if total_nodes_str and total_nodes_str.isdigit() else None
 
@@ -150,87 +159,74 @@ class OSMParser:
             print(f"[>] Pass 1: Caching nodes... (0 / {total_nodes})")
         else:
             print("[>] Pass 1: Caching nodes...")
+        
+        # [CRITICAL]: Disable GC to prevent CPU thrashing during massive array appends
+        gc.disable()
+        
+        # We only care about nodes in Pass 1
+        context = ET.iterparse(self.osm_file, events=('end',), tag='node')
+        
+        node_ids_append = self.node_ids.append
+        node_coords_append = self.node_coords.append
 
-        gc.disable()  # Disable automatic GC during streaming parse
         count = 0
-
-        # lxml's iterparse with tag filter is more efficient than ET
-        for event, elem in ET.iterparse(self.osm_file, events=('end',), tag='node'):
-            lon_str = elem.get('lon')
-            lat_str = elem.get('lat')
+        for event, elem in context:
+            try:
+                node_ids_append(int(elem.get('id')))
+                node_coords_append(float(elem.get('lon')))
+                node_coords_append(float(elem.get('lat')))
+            except (TypeError, ValueError):
+                pass
             
-            if lon_str is not None and lat_str is not None:
-                try:
-                    node_id = int(elem.get('id'))
-                    # Single-pass float conversion to avoid double parsing
-                    lon = float(lon_str)
-                    lat = float(lat_str)
-                    self.nodes[node_id] = (lon, lat)
-                    count += 1
+            count += 1
+            if not (count & 0x1FFFF):
+                print(f"\r    Nodes cached: {count:,}", end="", flush=True)
 
-                    if not (count & 0x1FFFF):  # Log every ~131k nodes
-                        sys.stdout.write(f"\r    Nodes cached: {count:,}")
-                        sys.stdout.flush()
-                except (ValueError, KeyError) as e:
-                    # Log malformed nodes but continue
-                    sys.stderr.write(f"[!] Skipped malformed node: {elem.get('id')}\n")
-                    continue
-
-            # lxml-specific: C-level deallocation via parent pointer manipulation
+            # [CRITICAL]: lxml C-level memory deallocation
             elem.clear()
             while elem.getprevious() is not None:
                 del elem.getparent()[0]
 
-        print(f"\r    Nodes loaded: {len(self.nodes):,}       ")
+        # Re-enable GC and flush tree
         gc.enable()
         gc.collect()
+        print(f"\r    Nodes loaded into Arrays: {len(self.node_ids):,}        ")
 
     def _pass2_build_features(self) -> None:
         """Assemble primitives by topology."""
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
+        
+        # We process 'node' (for POIs), 'way', and 'relation'
+        context = ET.iterparse(self.osm_file, events=('end',))
 
-        gc.disable()
+        processors = {
+            'way': self._process_way,
+            'relation': self._process_relation,
+            'node': self._process_node
+        }
+
         count = 0
+        for event, elem in context:
+            processor = processors.get(elem.tag)
+            if processor:
+                processor(elem)
+                count += 1
+                
+                if not (count & 0x3FFF):
+                    print(f"\r    Elements processed: {count:,}", end="", flush=True)
 
-        for event, elem in ET.iterparse(self.osm_file, events=('end',), tag=('node', 'way', 'relation')):
-            tag_name = elem.tag
-
-            try:
-                if tag_name == 'node' and len(elem) > 0:
-                    self._process_node(elem)
-                elif tag_name == 'way' and len(elem) > 0:
-                    self._process_way(elem)
-                elif tag_name == 'relation' and len(elem) > 0:
-                    self._process_relation(elem)
-            except Exception as e:
-                sys.stderr.write(f"[!] Error processing {tag_name} {elem.get('id')}: {e}\n")
-                continue
-
-            count += 1
-            if not (count & 0x3FFF):  # Log every ~16k elements
-                sys.stdout.write(f"\r    Elements processed: {count:,}")
-                sys.stdout.flush()
-
-            # lxml-specific memory deallocation
-            elem.clear()
-            while elem.getprevious() is not None:
-                del elem.getparent()[0]
+                # Clear processed elements to save RAM
+                elem.clear()
+                while elem.getprevious() is not None:
+                    del elem.getparent()[0]
 
         print(f"\r    Assembled: {len(self.roads)} roads, {len(self.landuse)} polygons, {len(self.pois)} points (POI).      ")
-        gc.enable()
-        gc.collect()
 
-    def _extract_tags(self, elem) -> Dict[str, str]:
-        """Fast tag extraction using lxml iterfind."""
-        return {child.get('k'): child.get('v') for child in elem.iterfind('tag')
-                if child.get('k') is not None and child.get('v') is not None}
+    def _extract_tags(self, elem: ET.Element) -> Dict[str, str]:
+        return {child.get('k'): child.get('v') for child in elem.iterchildren('tag')
+                if child.get('k') and child.get('v')}
 
-    @staticmethod
-    def sanitize_osm_name(name: str) -> str:
-        """Normalize a string: trim spaces, move descriptors, truncate with safe UTF-8 encoding."""
-        return _sanitize_name_cached(name)
-
-    def _process_node(self, elem) -> None:
+    def _process_node(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
         if not tags:
             return
@@ -268,77 +264,72 @@ class OSMParser:
             return
 
         raw_name = tags.get('short_name:en') or tags.get('int_name') or tags.get('name:en') or tags.get('short_name') or tags.get('name') or ""
-        name = self.sanitize_osm_name(raw_name.strip())
+        name = _sanitize_name_cached(raw_name)
         if not name and fclass:
             name = str(fclass)
 
-        osm_id = elem.get('id')
-        if osm_id is None:
-            return
-            
-        node_coord = self.nodes.get(int(osm_id))
-        if not node_coord:
+        try:
+            osm_id = elem.get('id')
+            node_coord = self._get_node_coord(int(osm_id))
+            if not node_coord:
+                return
+        except (TypeError, ValueError):
             return
 
         feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=[node_coord])
         feature.calculate_bbox()
         self.pois.append(feature)
 
-    def _process_way(self, elem) -> None:
+    def _process_way(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
 
         if tags.get('access') in self.RESTRICTED_ACCESS_VALUES:
             if not any(k in tags for k in ('landuse', 'leisure', 'natural')):
                 return
 
-        # Optimized: single-pass point collection with generator + list comprehension
         points = []
-        for nd in elem.iterfind('nd'):
-            ref_str = nd.get('ref')
-            if ref_str is not None:
+        for nd in elem.iterchildren('nd'):
+            ref = nd.get('ref')
+            if ref is not None:
                 try:
-                    ref = int(ref_str)
-                    if ref in self.nodes:
-                        points.append(self.nodes[ref])
+                    coord = self._get_node_coord(int(ref))
+                    if coord:
+                        points.append(coord)
                 except ValueError:
                     continue
 
         if not points:
             return
             
-        osm_id = elem.get('id')
-        if osm_id is None:
+        try:
+            way_id = int(elem.get('id'))
+            self.ways_cache[way_id] = points
+        except (TypeError, ValueError):
             return
-            
-        self.ways_cache[int(osm_id)] = points
 
         raw_name = tags.get('short_name:en') or tags.get('int_name') or tags.get('name:en') or tags.get('short_name') or tags.get('name') or ""
-        name = self.sanitize_osm_name(raw_name.strip())
+        name = _sanitize_name_cached(raw_name)
+        osm_id = str(way_id)
 
-        # === PROTECTION: Runtime extraction of POIs from closed polygons ===
         is_closed = len(points) >= 4 and points[0] == points[-1]
 
         if is_closed and any(k in tags for k in ('building', 'amenity', 'shop', 'leisure', 'tourism', 'historic')):
             poi_fclass = None
 
-            # 1. Search by explicit key-value pairs in LUT
             for k, v in tags.items():
                 if (k, v) in LookupTables.TAG_ROUTING.get('pois', {}):
                     poi_fclass = LookupTables.TAG_ROUTING['pois'][(k, v)]
                     break
 
-            # 2. Fallback search by single values
             if not poi_fclass:
                 for val in tags.values():
                     if val in LookupTables.POI_CODES:
                         poi_fclass = val
                         break
 
-            # 3. Centroid injection
             if poi_fclass and poi_fclass not in LookupTables.DISABLED_POIS:
                 poi_code = LookupTables.POI_CODES.get(poi_fclass)
                 if poi_code:
-                    # Calculate mathematical centroid (discarding duplicate closing vertex)
                     unique_points = points[:-1]
                     avg_lon = sum(p[0] for p in unique_points) / len(unique_points)
                     avg_lat = sum(p[1] for p in unique_points) / len(unique_points)
@@ -353,7 +344,6 @@ class OSMParser:
                     )
                     poi_feature.calculate_bbox()
                     self.pois.append(poi_feature)
-        # =============================================================
 
         target_layer = fclass = None
 
@@ -413,7 +403,7 @@ class OSMParser:
                 feature.calculate_bbox()
                 self.landuse.append(feature)
 
-    def _process_relation(self, elem) -> None:
+    def _process_relation(self, elem: ET.Element) -> None:
         tags = self._extract_tags(elem)
         if tags.get('type') != 'multipolygon':
             return
@@ -434,12 +424,12 @@ class OSMParser:
             return
 
         raw_name = tags.get('short_name:en') or tags.get('int_name') or tags.get('name:en') or tags.get('short_name') or tags.get('name') or ""
-        name = self.sanitize_osm_name(raw_name.strip())
+        name = _sanitize_name_cached(raw_name)
 
         combined_points, parts = [], []
         current_index = 0
 
-        members = list(elem.iterfind('member'))
+        members = list(elem.iterchildren('member'))
         sorted_members = [m for m in members if m.get('role', 'outer') == 'outer'] + \
                          [m for m in members if m.get('role', 'outer') == 'inner']
 
