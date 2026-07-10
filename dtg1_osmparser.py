@@ -104,7 +104,7 @@ class OSMParser:
     def __init__(self, osm_file: str):
         self.osm_file = osm_file
         
-        # [MEMORY OPTIMIZATION]: Contiguous C-Arrays to survive GitHub Actions 7GB RAM limit
+        # Contiguous C-Arrays to survive GitHub Actions 7GB RAM limit
         self.node_ids = array.array('q')    # 64-bit signed int for OSM IDs
         self.node_coords = array.array('d') # 64-bit float interleaved [lon0, lat0, lon1, lat1...]
         
@@ -160,23 +160,34 @@ class OSMParser:
         else:
             print("[>] Pass 1: Caching nodes...")
         
-        # Отключаем GC для предотвращения CPU Thrashing
         gc.disable()
-        
-        # [CRITICAL]: УБРАН ФИЛЬТР tag='node'. Мы должны получать все элементы,
-        # чтобы очищать их из памяти и поймать границу перехода к линиям.
         context = ET.iterparse(self.osm_file, events=('end',))
         
         node_ids_append = self.node_ids.append
         node_coords_append = self.node_coords.append
 
         count = 0
+        is_sorted = True
+        last_id = -1
+        
+        TARGET_TAGS = {'node', 'way', 'relation'}
+
         for event, elem in context:
+            if elem.tag not in TARGET_TAGS:
+                continue
+
             if elem.tag == 'node':
                 try:
-                    node_ids_append(int(elem.get('id')))
+                    nid = int(elem.get('id'))
+                    node_ids_append(nid)
                     node_coords_append(float(elem.get('lon')))
                     node_coords_append(float(elem.get('lat')))
+                    
+                    # Проверка на монотонное возрастание для bisect
+                    if is_sorted and nid < last_id:
+                        is_sorted = False
+                    last_id = nid
+                    
                 except (TypeError, ValueError):
                     pass
                 
@@ -185,17 +196,33 @@ class OSMParser:
                     print(f"\r    Nodes cached: {count:,}", end="", flush=True)
 
             elif elem.tag == 'way':
-                # [СУПЕР-ОПТИМИЗАЦИЯ]: Формат OSM строго упорядочен (Nodes -> Ways -> Relations).
-                # Первый встреченный 'way' означает, что все миллионы узлов уже прочитаны.
-                # Мы немедленно прерываем чтение гигабайтного файла.
+                # Ранний выход: узлы закончились
                 break
 
-            # Универсальная и пуленепробиваемая C-level очистка памяти
+            # Безопасная очистка: чистим только сами узлы, оставляя детей 'way' нетронутыми
             elem.clear()
             while elem.getprevious() is not None:
                 del elem.getparent()[0]
 
-        # Включаем сборщик и принудительно очищаем остатки
+        # Если файл был локально изменен и узлы перемешаны, восстанавливаем сортировку
+        if not is_sorted:
+            print("\r    [!] Nodes are unsorted. Indexing arrays (may take some memory)...")
+            indices = list(range(len(self.node_ids)))
+            indices.sort(key=lambda i: self.node_ids[i])
+            
+            # C-уровень мгновенного выделения памяти: массив * длину
+            new_ids = array.array('q', [0]) * len(self.node_ids)
+            new_coords = array.array('d', [0.0]) * len(self.node_coords)
+            
+            for new_i, old_i in enumerate(indices):
+                new_ids[new_i] = self.node_ids[old_i]
+                new_coords[new_i * 2] = self.node_coords[old_i * 2]
+                new_coords[new_i * 2 + 1] = self.node_coords[old_i * 2 + 1]
+                
+            self.node_ids = new_ids
+            self.node_coords = new_coords
+            del indices
+
         gc.enable()
         gc.collect()
         print(f"\r    Nodes loaded into Arrays: {len(self.node_ids):,}        ")
@@ -204,7 +231,6 @@ class OSMParser:
         """Assemble primitives by topology."""
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
         
-        # Снова без фильтров, чтобы вычищать мусорные теги (bounds, meta)
         context = ET.iterparse(self.osm_file, events=('end',))
 
         processors = {
@@ -212,9 +238,15 @@ class OSMParser:
             'relation': self._process_relation,
             'node': self._process_node
         }
-
+        
+        TARGET_TAGS = {'node', 'way', 'relation'}
         count = 0
+
         for event, elem in context:
+            # Игнорируем дочерние элементы, чтобы не стереть их до обработки родителя
+            if elem.tag not in TARGET_TAGS:
+                continue
+
             processor = processors.get(elem.tag)
             if processor:
                 processor(elem)
@@ -223,7 +255,6 @@ class OSMParser:
                 if not (count & 0x3FFF):
                     print(f"\r    Elements processed: {count:,}", end="", flush=True)
 
-            # Тотальная очистка ВСЕХ узлов файла
             elem.clear()
             while elem.getprevious() is not None:
                 del elem.getparent()[0]
