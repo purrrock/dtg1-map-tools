@@ -1,5 +1,5 @@
 # Europe
-#belarus
+belarus
 #monaco
 #andorra
 #malta
@@ -10,7 +10,7 @@ spain
 #taiwan
 
 #Russia
-central-fed-district
+#central-fed-district
 #northwestern-fed-district
 
 # Можно добавлять любые ID из Geofabrik, например:
