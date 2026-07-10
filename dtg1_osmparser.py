@@ -7,6 +7,7 @@ import gc
 import re
 import array
 import bisect
+import itertools
 from lxml import etree as ET
 from functools import lru_cache
 from typing import List, Tuple, Dict, Optional
@@ -104,11 +105,16 @@ class OSMParser:
     def __init__(self, osm_file: str):
         self.osm_file = osm_file
         
-        # Contiguous C-Arrays to survive GitHub Actions 7GB RAM limit
-        self.node_ids = array.array('q')    # 64-bit signed int for OSM IDs
-        self.node_coords = array.array('d') # 64-bit float interleaved [lon0, lat0, lon1, lat1...]
+        # [MEMORY OPTIMIZATION 1]: Node Arrays
+        self.node_ids = array.array('q')    
+        self.node_coords = array.array('d') 
         
-        self.ways_cache: Dict[int, List[Tuple[float, float]]] = {}
+        # [MEMORY OPTIMIZATION 2]: Way Pool (Flattened coordinates to save 4-5GB of RAM)
+        self.way_coords_pool = array.array('d')
+        # ways_cache stores only (start_index, length) metadata
+        self.ways_cache: Dict[int, Tuple[int, int]] = {}
+        
+        self._nodes_freed = False
 
         self.roads: List[MapFeature] = []
         self.landuse: List[MapFeature] = []
@@ -143,7 +149,10 @@ class OSMParser:
         return self.roads, self.landuse, self.pois
 
     def _get_node_coord(self, node_id: int) -> Optional[Tuple[float, float]]:
-        """O(log N) binary search for node coordinates in C-Arrays."""
+        # Protection in case relation/way calls for node after nodes are freed
+        if self.node_ids is None:
+            return None
+            
         idx = bisect.bisect_left(self.node_ids, node_id)
         if idx < len(self.node_ids) and self.node_ids[idx] == node_id:
             coord_idx = idx * 2
@@ -151,7 +160,6 @@ class OSMParser:
         return None
 
     def _pass1_cache_nodes(self) -> None:
-        """Cache node geometry natively (Array Structs) using lxml."""
         total_nodes_str = os.environ.get('TOTAL_NODES', None)
         total_nodes = int(total_nodes_str) if total_nodes_str and total_nodes_str.isdigit() else None
 
@@ -183,7 +191,6 @@ class OSMParser:
                     node_coords_append(float(elem.get('lon')))
                     node_coords_append(float(elem.get('lat')))
                     
-                    # Проверка на монотонное возрастание для bisect
                     if is_sorted and nid < last_id:
                         is_sorted = False
                     last_id = nid
@@ -196,21 +203,17 @@ class OSMParser:
                     print(f"\r    Nodes cached: {count:,}", end="", flush=True)
 
             elif elem.tag == 'way':
-                # Ранний выход: узлы закончились
                 break
 
-            # Безопасная очистка: чистим только сами узлы, оставляя детей 'way' нетронутыми
             elem.clear()
             while elem.getprevious() is not None:
                 del elem.getparent()[0]
 
-        # Если файл был локально изменен и узлы перемешаны, восстанавливаем сортировку
         if not is_sorted:
             print("\r    [!] Nodes are unsorted. Indexing arrays (may take some memory)...")
             indices = list(range(len(self.node_ids)))
             indices.sort(key=lambda i: self.node_ids[i])
             
-            # C-уровень мгновенного выделения памяти: массив * длину
             new_ids = array.array('q', [0]) * len(self.node_ids)
             new_coords = array.array('d', [0.0]) * len(self.node_coords)
             
@@ -228,7 +231,6 @@ class OSMParser:
         print(f"\r    Nodes loaded into Arrays: {len(self.node_ids):,}        ")
 
     def _pass2_build_features(self) -> None:
-        """Assemble primitives by topology."""
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
         
         context = ET.iterparse(self.osm_file, events=('end',))
@@ -243,9 +245,18 @@ class OSMParser:
         count = 0
 
         for event, elem in context:
-            # Игнорируем дочерние элементы, чтобы не стереть их до обработки родителя
             if elem.tag not in TARGET_TAGS:
                 continue
+
+            # [MEMORY OPTIMIZATION 3]: EARLY NODE EJECTION
+            # The exact moment we hit the first relation, we know nodes/ways are done.
+            # We free up RAM immediately to give relations room to breathe.
+            if elem.tag == 'relation' and not self._nodes_freed:
+                print("\n    [!] Reaching Relations. Ejecting Node Cache to free RAM...", flush=True)
+                self.node_ids = None
+                self.node_coords = None
+                gc.collect()
+                self._nodes_freed = True
 
             processor = processors.get(elem.tag)
             if processor:
@@ -342,7 +353,12 @@ class OSMParser:
             
         try:
             way_id = int(elem.get('id'))
-            self.ways_cache[way_id] = points
+            
+            # [C-ARRAY FLATTENING]: Replaces massive List[Tuple] overhead with ultra-fast contiguous memory
+            start_idx = len(self.way_coords_pool)
+            self.way_coords_pool.extend(itertools.chain.from_iterable(points))
+            self.ways_cache[way_id] = (start_idx, len(points))
+            
         except (TypeError, ValueError):
             return
 
@@ -479,7 +495,12 @@ class OSMParser:
                     role = member.get('role', 'outer')
 
                     if ref in self.ways_cache:
-                        ring_points = list(self.ways_cache[ref])
+                        # [C-ARRAY UNFLATTENING]: Reconstructing geometries at memory-safe speed
+                        start_idx, length = self.ways_cache[ref]
+                        end_idx = start_idx + (length * 2)
+                        flat_coords = self.way_coords_pool[start_idx:end_idx]
+                        
+                        ring_points = [(flat_coords[i], flat_coords[i+1]) for i in range(0, length * 2, 2)]
 
                         if len(ring_points) >= 4 and ring_points[0] == ring_points[-1]:
                             is_cw = self._is_clockwise(ring_points)
