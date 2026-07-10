@@ -1,6 +1,6 @@
 # Europe
-belarus
-#monaco
+#belarus
+monaco
 #andorra
 #malta
 spain
