@@ -203,9 +203,10 @@ class OSMParser:
                     pass
                 
                 count += 1
-                if not (count & 0x1FFFF):
-                    print(f"\r    Nodes cached: {count:,}", end="", flush=True)
-
+                if not (count & 0xFFFFF):  # Триггер каждые 1,048,575 элементов
+                    # sys.getsizeof дает точный размер непрерывных C-массивов
+                    mem_mb = (sys.getsizeof(self.node_ids) + sys.getsizeof(self.node_coords)) / (1024 * 1024)
+                    print(f"\r    Nodes cached: {count:,} | Arrays RAM: {mem_mb:.1f} MB", end="", flush=True)
             elif elem.tag == 'way':
                 break
 
@@ -256,7 +257,9 @@ class OSMParser:
             # The exact moment we hit the first relation, we know nodes/ways are done.
             # We free up RAM immediately to give relations room to breathe.
             if elem.tag == 'relation' and not self._nodes_freed:
-                print("\n    [!] Reaching Relations. Ejecting Node Cache to free RAM...", flush=True)
+                arrays_mb = (sys.getsizeof(self.node_ids) + sys.getsizeof(self.node_coords)) / (1024 * 1024)
+                print(f"\n    [!] Reaching Relations. Ejecting Node Cache to free ~{arrays_mb:.1f} MB...", flush=True)
+                
                 self.node_ids = None
                 self.node_coords = None
 
@@ -287,8 +290,24 @@ class OSMParser:
                 processor(elem)
                 count += 1
                 
-                if not (count & 0x3FFF):
-                    print(f"\r    Elements processed: {count:,}", end="", flush=True)
+                if not (count & 0x7FFFF):  # Триггер каждые 524,287 элементов
+                    ways_pool_mb = sys.getsizeof(self.way_coords_pool) / (1024 * 1024)
+                    features_count = len(self.roads) + len(self.landuse) + len(self.pois)
+                    
+                    # Получение фактического использования RAM процессом (только для Linux/GitHub Actions)
+                    rss_mb = 0.0
+                    if sys.platform.startswith('linux'):
+                        try:
+                            with open(f'/proc/{os.getpid()}/status', 'r') as f:
+                                for line in f:
+                                    if line.startswith('VmRSS:'):
+                                        rss_mb = int(line.split()[1]) / 1024
+                                        break
+                        except Exception:
+                            pass
+                            
+                    mem_str = f" | Sys VmRSS: {rss_mb:.1f} MB" if rss_mb else ""
+                    print(f"\r    Processed: {count:,} | Features: {features_count:,} | WayPool: {ways_pool_mb:.1f} MB{mem_str}", end="", flush=True)
 
             elem.clear()
             while elem.getprevious() is not None:
