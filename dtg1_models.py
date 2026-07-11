@@ -20,6 +20,10 @@ class HWConfig:
     DEFAULT_POLYGON_CODE = 7208
     DEFAULT_POI_CODE = 2724
 
+    # Other constants
+    LOD_MASK = 0x0E
+    RAM_LOAD_TYPE = 0x04000000
+
 
 def safe_encode(text: Any, max_len: int) -> bytes:
     """
@@ -28,9 +32,9 @@ def safe_encode(text: Any, max_len: int) -> bytes:
     """
     b = str(text or "").encode('utf-8')
     if len(b) <= max_len:
-        return b
+        return b.ljust(max_len, b'\x00')
     # Slice and decode with 'ignore' to drop incomplete sequences, then re-encode
-    return b[:max_len].decode('utf-8', 'ignore').encode('utf-8')
+    return b[:max_len].decode('utf-8', 'ignore').encode('utf-8').ljust(max_len, b'\x00')
 
 
 # [MEMORY OPTIMIZATION 1]: Указание slots=True предотвращает создание __dict__ и __weakref__
