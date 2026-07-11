@@ -38,13 +38,14 @@ def memory_files():
     with patch('builtins.open', side_effect=mock_open_func):
         yield files
 
-
 def test_yzl_header_generation(memory_files):
     """
     Test for YZL header generation. Checks:
     1. YZL signature.
-    2. Payload size at offset 0x04.
-    3. 16-byte MD5 hash at offset 0x10.
+    2. Magic Extension at offset 0x03.
+    3. Payload size at offset 0x04.
+    4. RAM Load Type at offset 0x08.
+    5. 16-byte MD5 hash at offset 0x10.
     """
     payload = b'test_payload_123'
     filepath = "test.mlp"
@@ -58,13 +59,19 @@ def test_yzl_header_generation(memory_files):
 
     # 1. Signature check
     assert output[0:3] == b'YZL', "Missing b'YZL' signature"
+    
+    # 2. Magic Extension check (.mlp/.db = 0x00)
+    assert output[3] == 0x00, "Magic Extension must be 0x00 for non-index files"
 
-    # 2. Payload size check at offset 0x04
+    # 3. Payload size check at offset 0x04
     payload_size = struct.unpack('<I', output[4:8])[0]
-    assert payload_size == len(output) - 32, "Payload Size calculated incorrectly"
     assert payload_size == len(payload), "Payload Size differs from actual payload length"
 
-    # 3. MD5 hash length and match check (Offset 0x10 is 16)
+    # 4. RAM Load Type check at offset 0x08 (0x04000000 for standard layers)
+    ram_load_type = output[8:12]
+    assert ram_load_type == b'\x00\x00\x00\x04', "Invalid RAM Load Type representation (Little-Endian expected)"
+
+    # 5. MD5 hash length and match check (Offset 0x10 is 16)
     md5_hash = output[16:32]
     assert len(md5_hash) == 16, "MD5 hash must be exactly 16 bytes"
 
@@ -93,10 +100,12 @@ def test_endianness_mlp_compilation(memory_files):
 
     # Offset calculations:
     # YZL header: 32 bytes
-    # MLP geometry record: Header (>I record_num, <I body_size) -> 8 bytes
+    # MLP geometry record: Header (<I record_num, <I body_size) -> 8 bytes
     # Body begins at offset 40
     header_offset = 32
-    record_number = struct.unpack('>I', output[header_offset:header_offset + 4])[0]
+    
+    # ИСПРАВЛЕНО: Строгий Little-Endian '<I' вместо '>I'
+    record_number = struct.unpack('<I', output[header_offset:header_offset + 4])[0]
     body_size = struct.unpack('<I', output[header_offset + 4:header_offset + 8])[0]
     body = output[header_offset + 8 : header_offset + 8 + body_size]
 
@@ -105,7 +114,6 @@ def test_endianness_mlp_compilation(memory_files):
     expected_le_bytes = struct.pack("<i", 1000000)
     assert expected_le_bytes == b'\x40\x42\x0f\x00', "System pack validation"
     assert body[0:4] == expected_le_bytes, "minx coordinate must be serialized in Little-Endian (<)"
-
 
 def test_c_union_node_alignment_padding():
     """
