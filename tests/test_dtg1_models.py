@@ -56,8 +56,8 @@ def test_mapfeature_pack_data_node():
         fclass="highway",
         code=5142,
         name="Main St",
-        points=[(10.0, 20.0), (15.0, 25.0)],
-        bbox=(10.0, 20.0, 15.0, 25.0),
+        points=[(10000000, 20000000), (15000000, 25000000)],
+        bbox=(10000000, 20000000, 15000000, 25000000),
         v1=100,
         v2=200
     )
@@ -86,9 +86,9 @@ def test_mapfeature_calculate_bbox_empty():
         points=[],
         parts=[]
     )
-    # The initial bbox is (0.0, 0.0, 0.0, 0.0)
+    # The initial bbox is (0, 0, 0, 0)
     feature.calculate_bbox()
-    assert feature.bbox == (0.0, 0.0, 0.0, 0.0)
+    assert feature.bbox == (0, 0, 0, 0)
 
 def test_mapfeature_calculate_bbox_accuracy():
     """Test bounding box calculation accuracy."""
@@ -97,19 +97,16 @@ def test_mapfeature_calculate_bbox_accuracy():
         fclass="highway",
         code=5142,
         name="Some St",
-        points=[(1.1, 2.2), (-1.1, 5.5), (3.3, 0.0)]
+        points=[(1100000, 2200000), (-1100000, 5500000), (3300000, 0)]
     )
     feature.calculate_bbox()
-    assert feature.bbox[0] == pytest.approx(-1.1)
-    assert feature.bbox[1] == pytest.approx(0.0)
-    assert feature.bbox[2] == pytest.approx(3.3)
-    assert feature.bbox[3] == pytest.approx(5.5)
+    assert feature.bbox == (-1100000, 0, 3300000, 5500000)
 
 def test_rtreenode_post_init_empty():
     """Test RTreeNode initialization with empty children."""
     node = RTreeNode(level=0, children=[])
 
-    assert node.bbox == (0.0, 0.0, 0.0, 0.0)
+    assert node.bbox == (0, 0, 0, 0)
     assert node.v3_jump == 8
     assert node.bin_size == HWConfig.NODE_SIZE
 

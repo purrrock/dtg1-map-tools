@@ -46,13 +46,13 @@ class MapFeature:
     fclass: str
     code: int
     name: str
-    points: List[Tuple[float, float]]
-    
+    points: List[Tuple[int, int]]
+
     # [MEMORY OPTIMIZATION 2]: Используем иммутабельный (неизменяемый) кортеж по умолчанию.
     # Это позволяет всем миллионам объектов без multipolygon ссылаться на один и тот же (0,) в памяти.
     parts: Sequence[int] = (0,)
 
-    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    bbox: Tuple[int, int, int, int] = (0, 0, 0, 0)
     v1: int = 0        # Absolute geometry offset in the .mlp file
     v2: int = 0        # Row index in the attribute DB .db
     mlp_size: int = 0  # Binary body size in the .mlp file
@@ -61,20 +61,20 @@ class MapFeature:
         """Direct bounding box calculation (optimized O(N) single pass)."""
         if not self.points:
             return
-            
-        # [MEMORY OPTIMIZATION 3]: Отказ от List Comprehension. 
+
+        # [MEMORY OPTIMIZATION 3]: Отказ от List Comprehension.
         # Проходим по массиву координат ровно один раз (O(N)), не выделяя память под временные списки.
         p0 = self.points[0]
         minx, miny = p0[0], p0[1]
         maxx, maxy = p0[0], p0[1]
-        
+
         for x, y in self.points[1:]:
             if x < minx: minx = x
             elif x > maxx: maxx = x
-            
+
             if y < miny: miny = y
             elif y > maxy: maxy = y
-            
+
         self.bbox = (minx, miny, maxx, maxy)
 
     def pack_data_node(self) -> bytes:
@@ -84,7 +84,8 @@ class MapFeature:
         """
         return struct.pack(
             "<ffffIII",
-            self.bbox[0], self.bbox[1], self.bbox[2], self.bbox[3],
+            self.bbox[0] / 1000000.0, self.bbox[1] / 1000000.0,
+            self.bbox[2] / 1000000.0, self.bbox[3] / 1000000.0,
             self.code, self.v1, self.v2
         )
 
@@ -98,14 +99,14 @@ class RTreeNode:
     """
     level: int
     children: List[Any]  # List of MapFeature (if level 0) or RTreeNode (if level > 0)
-    bbox: Tuple[float, float, float, float] = field(init=False)
+    bbox: Tuple[int, int, int, int] = field(init=False)
     v3_jump: int = field(init=False)
     bin_size: int = field(init=False)
 
     def __post_init__(self):
         # [MEMORY OPTIMIZATION 4]: Аналогичный O(N) проход для Macro-Nodes
         if not self.children:
-            self.bbox = (0.0, 0.0, 0.0, 0.0)
+            self.bbox = (0, 0, 0, 0)
             self.v3_jump = 8
             self.bin_size = HWConfig.NODE_SIZE
             return
@@ -142,7 +143,8 @@ class RTreeNode:
         data = bytearray(struct.pack(
             "<IffffII",
             self.v3_jump,
-            self.bbox[0], self.bbox[1], self.bbox[2], self.bbox[3],
+            self.bbox[0] / 1000000.0, self.bbox[1] / 1000000.0,
+            self.bbox[2] / 1000000.0, self.bbox[3] / 1000000.0,
             self.level,
             len(self.children)
         ))

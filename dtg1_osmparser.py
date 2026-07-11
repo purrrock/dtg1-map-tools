@@ -37,12 +37,13 @@ _STOP_WORDS_RX = re.compile(
     re.IGNORECASE
 )
 
+
 @lru_cache(maxsize=32768)
 def _sanitize_name_cached(name: str) -> str:
     """Cached name sanitization for POI centroid extraction and UI rendering."""
     if not name:
         return ""
-    
+
     name = name.strip()
     m = _STOP_WORDS_RX.match(name)
     if m:
@@ -71,7 +72,7 @@ class GPXParser:
     """Extract track geometry for injection into the Roads layer."""
 
     @staticmethod
-    def parse_track(filepath: str) -> Tuple[str, List[Tuple[float, float]]]:
+    def parse_track(filepath: str) -> Tuple[str, List[Tuple[int, int]]]:
         if not os.path.exists(filepath):
             return "Route", []
 
@@ -91,7 +92,7 @@ class GPXParser:
         points = []
         for trkpt in root.findall('.//gpx:trkpt', namespaces=ns):
             try:
-                points.append((float(trkpt.get('lon')), float(trkpt.get('lat'))))
+                points.append((int(float(trkpt.get('lon')) * 1000000), int(float(trkpt.get('lat')) * 1000000)))
             except (ValueError, TypeError):
                 continue
 
@@ -104,20 +105,20 @@ class OSMParser:
 
     def __init__(self, osm_file: str):
         self.osm_file = osm_file
-        
+
         # [MEMORY OPTIMIZATION 1]: Node Arrays
-        self.node_ids = array.array('q')    
-        self.node_coords = array.array('d') 
-        
+        self.node_ids = array.array('q')
+        self.node_coords = array.array('i')
+
         # [MEMORY OPTIMIZATION 2]: Way Pool (Flattened coordinates to save 4-5GB of RAM)
-        self.way_coords_pool = array.array('d')
+        self.way_coords_pool = array.array('i')
         # ways_cache replaced with parallel arrays to prevent dict memory bloat
         self.way_cache_ids = array.array('q')
         self.way_cache_starts = array.array('q')
         self.way_cache_lengths = array.array('i')
         self._ways_sorted = True
         self._last_way_id = -1
-        
+
         self._nodes_freed = False
 
         self.roads: List[MapFeature] = []
@@ -125,7 +126,7 @@ class OSMParser:
         self.pois: List[MapFeature] = []
 
     @staticmethod
-    def _is_clockwise(points: List[Tuple[float, float]]) -> bool:
+    def _is_clockwise(points: List[Tuple[int, int]]) -> bool:
         return is_clockwise(points)
 
     def _analyze_road_surface(self, tags: Dict[str, str]) -> Optional[str]:
@@ -152,11 +153,11 @@ class OSMParser:
         self._pass2_build_features()
         return self.roads, self.landuse, self.pois
 
-    def _get_node_coord(self, node_id: int) -> Optional[Tuple[float, float]]:
+    def _get_node_coord(self, node_id: int) -> Optional[Tuple[int, int]]:
         # Protection in case relation/way calls for node after nodes are freed
         if self.node_ids is None:
             return None
-            
+
         idx = bisect.bisect_left(self.node_ids, node_id)
         if idx < len(self.node_ids) and self.node_ids[idx] == node_id:
             coord_idx = idx * 2
@@ -171,17 +172,17 @@ class OSMParser:
             print(f"[>] Pass 1: Caching nodes... (0 / {total_nodes})")
         else:
             print("[>] Pass 1: Caching nodes...")
-        
+
         gc.disable()
         context = ET.iterparse(self.osm_file, events=('end',))
-        
+
         node_ids_append = self.node_ids.append
         node_coords_append = self.node_coords.append
 
         count = 0
         is_sorted = True
         last_id = -1
-        
+
         TARGET_TAGS = {'node', 'way', 'relation'}
 
         for event, elem in context:
@@ -192,16 +193,16 @@ class OSMParser:
                 try:
                     nid = int(elem.get('id'))
                     node_ids_append(nid)
-                    node_coords_append(float(elem.get('lon')))
-                    node_coords_append(float(elem.get('lat')))
-                    
+                    node_coords_append(int(float(elem.get('lon')) * 1000000))
+                    node_coords_append(int(float(elem.get('lat')) * 1000000))
+
                     if is_sorted and nid < last_id:
                         is_sorted = False
                     last_id = nid
-                    
+
                 except (TypeError, ValueError):
                     pass
-                
+
                 count += 1
                 if not (count & 0xFFFFF):  # Триггер каждые 1,048,575 элементов
                     # sys.getsizeof дает точный размер непрерывных C-массивов
@@ -218,15 +219,15 @@ class OSMParser:
             print("\r    [!] Nodes are unsorted. Indexing arrays (may take some memory)...")
             indices = list(range(len(self.node_ids)))
             indices.sort(key=lambda i: self.node_ids[i])
-            
+
             new_ids = array.array('q', [0]) * len(self.node_ids)
-            new_coords = array.array('d', [0.0]) * len(self.node_coords)
-            
+            new_coords = array.array('i', [0]) * len(self.node_coords)
+
             for new_i, old_i in enumerate(indices):
                 new_ids[new_i] = self.node_ids[old_i]
                 new_coords[new_i * 2] = self.node_coords[old_i * 2]
                 new_coords[new_i * 2 + 1] = self.node_coords[old_i * 2 + 1]
-                
+
             self.node_ids = new_ids
             self.node_coords = new_coords
             del indices
@@ -237,7 +238,7 @@ class OSMParser:
 
     def _pass2_build_features(self) -> None:
         print("[>] Pass 2: Normalizing geometry, multipolygons and POIs...")
-        
+
         context = ET.iterparse(self.osm_file, events=('end',))
 
         processors = {
@@ -245,7 +246,7 @@ class OSMParser:
             'relation': self._process_relation,
             'node': self._process_node
         }
-        
+
         TARGET_TAGS = {'node', 'way', 'relation'}
         count = 0
 
@@ -259,7 +260,7 @@ class OSMParser:
             if elem.tag == 'relation' and not self._nodes_freed:
                 arrays_mb = (sys.getsizeof(self.node_ids) + sys.getsizeof(self.node_coords)) / (1024 * 1024)
                 print(f"\n    [!] Reaching Relations. Ejecting Node Cache to free ~{arrays_mb:.1f} MB...", flush=True)
-                
+
                 self.node_ids = None
                 self.node_coords = None
 
@@ -289,11 +290,11 @@ class OSMParser:
             if processor:
                 processor(elem)
                 count += 1
-                
+
                 if not (count & 0x7FFFF):  # Триггер каждые 524,287 элементов
                     ways_pool_mb = sys.getsizeof(self.way_coords_pool) / (1024 * 1024)
                     features_count = len(self.roads) + len(self.landuse) + len(self.pois)
-                    
+
                     # Получение фактического использования RAM процессом (только для Linux/GitHub Actions)
                     rss_mb = 0.0
                     if sys.platform.startswith('linux'):
@@ -305,7 +306,7 @@ class OSMParser:
                                         break
                         except Exception:
                             pass
-                            
+
                     mem_str = f" | Sys VmRSS: {rss_mb:.1f} MB" if rss_mb else ""
                     print(f"\r    Processed: {count:,} | Features: {features_count:,} | WayPool: {ways_pool_mb:.1f} MB{mem_str}", end="", flush=True)
 
@@ -393,10 +394,10 @@ class OSMParser:
 
         if not points:
             return
-            
+
         try:
             way_id = int(elem.get('id'))
-            
+
             # [C-ARRAY FLATTENING]: Replaces massive List[Tuple] overhead with ultra-fast contiguous memory
             start_idx = len(self.way_coords_pool)
             self.way_coords_pool.extend(itertools.chain.from_iterable(points))
@@ -408,7 +409,7 @@ class OSMParser:
             if self._ways_sorted and way_id < self._last_way_id:
                 self._ways_sorted = False
             self._last_way_id = way_id
-            
+
         except (TypeError, ValueError):
             return
 
@@ -436,8 +437,8 @@ class OSMParser:
                 poi_code = LookupTables.POI_CODES.get(poi_fclass)
                 if poi_code:
                     unique_points = points[:-1]
-                    avg_lon = sum(p[0] for p in unique_points) / len(unique_points)
-                    avg_lat = sum(p[1] for p in unique_points) / len(unique_points)
+                    avg_lon = sum(p[0] for p in unique_points) // len(unique_points)
+                    avg_lat = sum(p[1] for p in unique_points) // len(unique_points)
 
                     poi_name = name if name else str(poi_fclass)
                     poi_feature = MapFeature(
@@ -551,8 +552,8 @@ class OSMParser:
                         length = self.way_cache_lengths[idx]
                         end_idx = start_idx + (length * 2)
                         flat_coords = self.way_coords_pool[start_idx:end_idx]
-                        
-                        ring_points = [(flat_coords[i], flat_coords[i+1]) for i in range(0, length * 2, 2)]
+
+                        ring_points = [(flat_coords[i], flat_coords[i + 1]) for i in range(0, length * 2, 2)]
 
                         if len(ring_points) >= 4 and ring_points[0] == ring_points[-1]:
                             is_cw = self._is_clockwise(ring_points)

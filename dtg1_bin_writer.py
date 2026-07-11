@@ -47,15 +47,13 @@ class MapCompiler:
         record_number = 1
 
         for feature in features:
-            minx_i, miny_i, maxx_i, maxy_i = (int(c * 1e6) for c in feature.bbox)
-
-            body = bytearray(struct.pack("<iiii", minx_i, miny_i, maxx_i, maxy_i))
+            body = bytearray(struct.pack("<iiii", feature.bbox[0], feature.bbox[1], feature.bbox[2], feature.bbox[3]))
             body += struct.pack("<II", len(feature.parts), len(feature.points))
 
             for part_idx in feature.parts:
                 body += struct.pack("<I", part_idx)
             for p in feature.points:
-                body += struct.pack("<ii", int(p[0] * 1e6), int(p[1] * 1e6))
+                body += struct.pack("<ii", p[0], p[1])
 
             header = struct.pack(">I", record_number) + struct.pack("<I", len(body))
             record_bin = header + body
@@ -241,7 +239,7 @@ class MapCompiler:
         """Generates the JSON camera centering file."""
         if not meta_records:
             return
-        center_lat = (min(r.bbox[1] for r in meta_records) + max(r.bbox[3] for r in meta_records)) / 2.0
-        center_lon = (min(r.bbox[0] for r in meta_records) + max(r.bbox[2] for r in meta_records)) / 2.0
+        center_lat = (min(r.bbox[1] for r in meta_records) + max(r.bbox[3] for r in meta_records)) / 2.0 / 1000000.0
+        center_lon = (min(r.bbox[0] for r in meta_records) + max(r.bbox[2] for r in meta_records)) / 2.0 / 1000000.0
         with open(out_file, "w", encoding="utf-8") as f:
             json.dump({"centerLat": center_lat, "centerLon": center_lon, "mapName": name}, f, separators=(',', ':'))

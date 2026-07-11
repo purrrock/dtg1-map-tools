@@ -88,7 +88,7 @@ def test_endianness_mlp_compilation(memory_files):
         fclass="road",
         code=5142,
         name="test_road",
-        points=[(1.0, 1.0)],
+        points=[(1000000, 1000000)],
         parts=(0,)
     )
     feature.calculate_bbox()
