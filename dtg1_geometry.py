@@ -39,8 +39,8 @@ class POIGeometryFactory:
 
     @classmethod
     def generate_polygon(
-        cls, shape_type: str, center_lon: float, center_lat: float
-    ) -> List[Tuple[float, float]]:
+        cls, shape_type: str, center_lon: int, center_lat: int
+    ) -> List[Tuple[int, int]]:
         """Convert metric shapes into spherical polygons (WGS 84)."""
         R = cls.R
 
@@ -107,7 +107,7 @@ class POIGeometryFactory:
                 (-R + 1.0, R - 4.0),      # 9. Низ левого рукава
                 (-R, R - 1.5),            # 10. Левое плечо
                 (-1.5, R)                 # 11. Замыкание (возврат к 1)
-            ],   
+            ],
             # Асимметричный молоток.
             # 10 вершин (с замыкающей).
             "hammer": [
@@ -122,19 +122,19 @@ class POIGeometryFactory:
                 (-R, R - 1.0),          # 9. Излом гвоздодера
                 (-1.0, R)               # 1. Замыкание (диагональный срез)
             ],
-            
+
             # Асимметричная горная гряда (Outdoor / Горы). Правый пик ниже левого.
             # 6 вершин (с замыкающей).
             "mountain": [
-                (-R, -R), (-R / 2, R), (0, 0), (R / 2, R - 1.5), 
+                (-R, -R), (-R / 2, R), (0, 0), (R / 2, R - 1.5),
                 (R, -R), (-R, -R)
             ],
             # Единый полигон монитора и подставки. 10 вершин.
             "computer": [
-                (-R, R), (R, R), (R, -R + 3.0), (1.0, -R + 3.0), 
-                (2.0, -R + 1.0), (2.0, -R), (-2.0, -R), (-2.0, -R + 1.0), 
+                (-R, R), (R, R), (R, -R + 3.0), (1.0, -R + 3.0),
+                (2.0, -R + 1.0), (2.0, -R), (-2.0, -R), (-2.0, -R + 1.0),
                 (-1.0, -R + 3.0), (-R, -R + 3.0), (-R, R)
-            ],  
+            ],
             # Самолет (Аэропорт). 13 вершин (с замыкающей).
             "airplane": [
                 (0, R),               # 1. Нос
@@ -153,11 +153,11 @@ class POIGeometryFactory:
             ],
             # Стилизованная бензоколонка со шлангом (АЗС). 10 вершин.
             "fuel": [
-                (-1.5, R), (1.5, R), (1.5, 1.0), (R, 1.0), 
-                (R, -1.0), (2.5, -1.0), (2.5, 0.0), (1.5, 0.0), 
+                (-1.5, R), (1.5, R), (1.5, 1.0), (R, 1.0),
+                (R, -1.0), (2.5, -1.0), (2.5, 0.0), (1.5, 0.0),
                 (1.5, -R), (-1.5, -R), (-1.5, R)
             ],
-            # Стилизованный знак доллара "S" с вертикальным штрихом (Банк / Банкомат). 
+            # Стилизованный знак доллара "S" с вертикальным штрихом (Банк / Банкомат).
             # Тонкие линии. Нижняя линия S опущена (-2.5) для визуального баланса.
             # 21 вершина (с замыкающей).
             "dollar": [
@@ -191,20 +191,27 @@ class POIGeometryFactory:
         }
 
         rel_coords = shapes.get(shape_type, shapes["rhombus"])
-        points: List[Tuple[float, float]] = []
-        lat_rad = radians(center_lat)
+        points: List[Tuple[int, int]] = []
+
+        # Convert fixed-point int coordinates back to float degrees for math
+        center_lat_float = center_lat / 1000000.0
+        center_lon_float = center_lon / 1000000.0
+
+        lat_rad = radians(center_lat_float)
         cos_lat = cos(lat_rad)
 
         for x_offset, y_offset in rel_coords:
             y_offset_stretched = y_offset * cls.PERSPECTIVE_Y_MULTIPLIER
             d_lat = (y_offset_stretched / cls.EARTH_RADIUS) * (180.0 / pi)
             d_lon = (x_offset / (cls.EARTH_RADIUS * cos_lat)) * (180.0 / pi)
-            points.append((center_lon + d_lon, center_lat + d_lat))
+
+            # Scale back to fixed-point int
+            points.append((int((center_lon_float + d_lon) * 1000000), int((center_lat_float + d_lat) * 1000000)))
 
         return points
 
 
-def is_clockwise(points: List[Tuple[float, float]]) -> bool:
+def is_clockwise(points: List[Tuple[int, int]]) -> bool:
     """Check ring orientation using signed area.
 
     Accepts sequence of (lon, lat) tuples. Works with closed rings
