@@ -1,18 +1,235 @@
-# Europe
-#belarus
-monaco
-#andorra
-#malta
-spain
-#cyprus
+# ==========================================
+# DTG1 MAP COMPILER - REGIONS CONFIGURATION
+# ==========================================
+# Раскомментируй (убери '# ' в начале строки) нужные регионы для сборки.
+# ВНИМАНИЕ: Одновременная сборка более 15 регионов за один коммит 
+# может привести к блокировке по IP со стороны файрвола Geofabrik (DDoS защита).
 
-#Asia
-#taiwan
-
-#Russia
-central-fed-district
-#northwestern-fed-district
-
-# Можно добавлять любые ID из Geofabrik, например:
+### EUROPE ###
+# albania
+# andorra
+# austria
+# azores
+# belarus
+# belgium
+# bosnia-herzegovina
+# bulgaria
+# croatia
 # cyprus
+# czech-republic
+# denmark
+# estonia
+# faroe-islands
+# finland
+# france
 # georgia
+# germany
+# great-britain
+# greece
+# hungary
+# iceland
+# ireland-and-northern-ireland
+# isle-of-man
+italy
+# kosovo
+# latvia
+# liechtenstein
+# lithuania
+# luxembourg
+# macedonia
+# malta
+# moldova
+# monaco
+# montenegro
+# netherlands
+# norway
+# poland
+portugal
+# romania
+# serbia
+# slovakia
+# slovenia
+# spain
+# sweden
+# switzerland
+# turkey
+# ukraine
+
+### RUSSIA (По федеральным округам из-за лимитов RAM) ###
+# russia-central-fed-district
+# russia-far-eastern-fed-district
+# russia-north-caucasus-fed-district
+russia-northwestern-fed-district
+# russia-siberian-fed-district
+# russia-south-fed-district
+# russia-ural-fed-district
+# russia-volga-fed-district
+# russia-kaliningrad
+
+### ASIA ###
+# afghanistan
+# armenia
+# azerbaijan
+# bangladesh
+# bhutan
+# cambodia
+# china
+# gcc-states
+# india
+# indonesia
+# iran
+# iraq
+# israel-and-palestine
+# japan
+# jordan
+# kazakhstan
+# kyrgyzstan
+# laos
+# lebanon
+# malaysia-singapore-brunei
+# maldives
+# mongolia
+# myanmar
+# nepal
+# north-korea
+# pakistan
+# philippines
+# south-korea
+# sri-lanka
+# syria
+# taiwan
+# tajikistan
+# thailand
+# turkmenistan
+# uzbekistan
+# vietnam
+# yemen
+
+### NORTH AMERICA ###
+# bahamas
+# belize
+# costa-rica
+# cuba
+# el-salvador
+# greenland
+# guatemala
+# haiti
+# honduras
+# jamaica
+# mexico
+# nicaragua
+# panama
+
+### NORTH AMERICA - US REGIONS ###
+# us-midwest
+# us-northeast
+# us-pacific
+# us-south
+# us-west
+
+### NORTH AMERICA - CANADA REGIONS ###
+# canada/alberta
+# canada/british-columbia
+# canada/manitoba
+# canada/new-brunswick
+# canada/newfoundland-and-labrador
+# canada/northwest-territories
+# canada/nova-scotia
+# canada/nunavut
+# canada/ontario
+# canada/prince-edward-island
+# canada/quebec
+# canada/saskatchewan
+# canada/yukon
+
+### SOUTH AMERICA ###
+# argentina
+# bolivia
+# brazil
+# chile
+# colombia
+# ecuador
+# paraguay
+# peru
+# suriname
+# uruguay
+# venezuela
+
+### AFRICA ###
+# algeria
+# angola
+# benin
+# botswana
+# burkina-faso
+# burundi
+# cameroon
+# canary-islands
+# cape-verde
+# central-african-republic
+# chad
+# comoros
+# congo-brazzaville
+# congo-democratic-republic
+# djibouti
+# egypt
+# equatorial-guinea
+# eritrea
+# ethiopia
+# gabon
+# ghana
+# guinea
+# guinea-bissau
+# ivory-coast
+# kenya
+# lesotho
+# liberia
+# libya
+# madagascar
+# malawi
+# mali
+# mauritania
+# mauritius
+# morocco
+# mozambique
+# namibia
+# niger
+# nigeria
+# rwanda
+# sao-tome-and-principe
+# senegal
+# seychelles
+# sierra-leone
+# somalia
+# south-africa
+# south-sudan
+# sudan
+# swaziland
+# tanzania
+# togo
+# tunisia
+# uganda
+# zambia
+# zimbabwe
+
+### OCEANIA ###
+# american-oceania
+# australia
+# cook-islands
+# fiji
+# new-caledonia
+# new-zealand
+# niue
+# palau
+# papua-new-guinea
+# pitcairn-islands
+# polynesia
+# samoa
+# solomon-islands
+# tokelau
+# tonga
+# tuvalu
+# vanuatu
+# wallis-and-futuna
+
+### ANTARCTICA ###
+# antarctica
