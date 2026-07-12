@@ -370,7 +370,9 @@ class OSMParser:
         except (TypeError, ValueError):
             return
 
-        feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=[node_coord])
+        import struct
+        points_bytes = struct.pack("<ii", node_coord[0], node_coord[1])
+        feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points_bytes)
         feature.calculate_bbox()
         self.pois.append(feature)
 
@@ -441,12 +443,14 @@ class OSMParser:
                     avg_lat = sum(p[1] for p in unique_points) // len(unique_points)
 
                     poi_name = name if name else str(poi_fclass)
+                    import struct
+                    points_bytes = struct.pack("<ii", avg_lon, avg_lat)
                     poi_feature = MapFeature(
                         osm_id=f"v{osm_id}",
                         fclass=poi_fclass,
                         code=poi_code,
                         name=poi_name,
-                        points=[(avg_lon, avg_lat)]
+                        points=points_bytes
                     )
                     poi_feature.calculate_bbox()
                     self.pois.append(poi_feature)
@@ -493,7 +497,8 @@ class OSMParser:
                 if fclass not in non_vehicle_classes:
                     code = 5113
 
-            feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points)
+            points_bytes = self.way_coords_pool[start_idx:start_idx + len(points) * 2].tobytes()
+            feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points_bytes)
             feature.calculate_bbox()
             self.roads.append(feature)
 
@@ -504,8 +509,12 @@ class OSMParser:
             if points[0] == points[-1]:
                 if not self._is_clockwise(points):
                     points.reverse()
+
+                import struct
+                points_bytes = b''.join(struct.pack("<ii", p[0], p[1]) for p in points)
+
                 code = LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE)
-                feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points)
+                feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points_bytes)
                 feature.calculate_bbox()
                 self.landuse.append(feature)
 
@@ -571,6 +580,8 @@ class OSMParser:
         osm_id = elem.get('id')
         if combined_points and parts and osm_id:
             code = LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE)
-            feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=combined_points, parts=parts)
+            import struct
+            points_bytes = b''.join(struct.pack("<ii", p[0], p[1]) for p in combined_points)
+            feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points_bytes, parts=parts)
             feature.calculate_bbox()
             self.landuse.append(feature)
