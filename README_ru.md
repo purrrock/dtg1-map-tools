@@ -5,7 +5,7 @@
 
 Если вы ищете способ **установить свои карты на смарт-часы** или нуждаетесь в более детализированных **офлайн-картах для DT NO.1 G1** для синхронизации через приложение **WearPro**, данный проект предоставляет полноценное open-source решение. 
 ➡️ **[Скачать готовые офлайн-карты (Готовые к копированию на часы)](https://github.com/purrrock/dtg1-map-tools/releases/tag/latest-maps)** [![GitHub release](https://img.shields.io/badge/Maps-latest--maps-blue)](https://github.com/purrrock/dtg1-map-tools/releases/tag/latest-maps)
-➡️ **[Скачать готовый компилятор (.EXE) для Windows](https://github.com/purrrock/dtg1-map-tools/releases/tag/v1.5.0)** [![GitHub release](https://img.shields.io/github/v/release/purrrock/dtg1-map-tools?color=green)](https://github.com/purrrock/dtg1-map-tools/releases/tag/v1.5.0)
+➡️ **[Скачать готовый компилятор (.EXE) для Windows](https://github.com/purrrock/dtg1-map-tools/releases/latest)** [![GitHub release](https://img.shields.io/github/v/release/purrrock/dtg1-map-tools?color=green)](https://github.com/purrrock/dtg1-map-tools/releases/latest)
 
 Набор Python-утилит для реверс-инжиниринга, анализа и компиляции пользовательских офлайн-карт для смарт-часов DT NO.1 G1, VWAR, KKTICK и Amolde (а также других white-label устройств на базе аппаратной платформы Actions Semiconductor ATS3085S).
 Инструментарий позволяет собирать собственные высокодетализированные карты из открытых источников (например, OpenStreetMap). Эти пользовательские карты аппаратно поддерживаются и идеально рендерятся встроенным графическим движком часов.
