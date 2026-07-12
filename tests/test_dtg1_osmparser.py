@@ -196,3 +196,27 @@ def test_gpx_parser_empty_file(mock_empty_gpx_file):
 
     assert name == "Route"
     assert len(points) == 0
+
+@pytest.fixture
+def mock_empty_gpx_without_tracks(tmp_path):
+    """
+    Генерация валидной, но пустой GPX структуры,
+    чтобы проверить корректность работы парсера на пустых данных.
+    """
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="Test">
+</gpx>
+"""
+    path = tmp_path / "empty_without_tracks.gpx"
+    path.write_text(content)
+    return str(path)
+
+def test_parse_track_empty_gpx_without_tracks(mock_empty_gpx_without_tracks):
+    """
+    [EDGE CASE]
+    Missing edge case: empty gpx file without tracks.
+    Just need to provide an empty but valid GPX XML structure to ensure it returns cleanly.
+    """
+    name, points = GPXParser.parse_track(mock_empty_gpx_without_tracks)
+    assert name == "Route"
+    assert points == []
