@@ -166,3 +166,47 @@ def test_dbf_padding_validation(memory_files):
     # Size: 32 (YZL) + 161 (DBF Header) + 145 (DBF Record)
     expected_size = 32 + HWConfig.DBF_HEADER_LEN + (HWConfig.DBF_RECORD_LEN * 1)
     assert len(output) == expected_size, f"DBF binary padded to {len(output)} instead of {expected_size}"
+
+
+def test_desc_field_descriptor():
+    """
+    Validates _desc packing for dBase III field descriptors.
+    Ensures correct 32-byte layout, null-padding, and type indicators.
+    """
+    name = "osm_id"
+    length = 12
+
+    desc_bytes = MapCompiler._desc(name, length)
+
+    # 1. Check total length is exactly 32 bytes
+    assert len(desc_bytes) == 32, "Field descriptor must be exactly 32 bytes"
+
+    # 2. Check the name is properly null-padded to 11 bytes
+    expected_name = b'osm_id\x00\x00\x00\x00\x00'
+    assert desc_bytes[0:11] == expected_name, "Name is not correctly padded to 11 bytes"
+
+    # 3. Check the type indicator 'C'
+    assert desc_bytes[11:12] == b'C', "Field type must be 'C' (Character)"
+
+    # 4. Check the 4-byte reserved padding
+    assert desc_bytes[12:16] == b'\x00' * 4, "Reserved bytes 12-15 must be null"
+
+    # 5. Check the field length
+    assert desc_bytes[16] == length, "Field length indicator is incorrect"
+
+    # 6. Check the remaining 15 bytes of reserved padding
+    assert desc_bytes[17:32] == b'\x00' * 15, "Reserved bytes 17-31 must be null"
+
+    # Edge case: max length name (11 chars)
+    name_11 = "abcdefghijk"
+    length_11 = 50
+    desc_bytes_11 = MapCompiler._desc(name_11, length_11)
+    assert len(desc_bytes_11) == 32
+    assert desc_bytes_11[0:11] == b'abcdefghijk'
+    assert desc_bytes_11[16] == 50
+
+    # Edge case: empty name
+    desc_bytes_empty = MapCompiler._desc("", 10)
+    assert len(desc_bytes_empty) == 32
+    assert desc_bytes_empty[0:11] == b'\x00' * 11
+    assert desc_bytes_empty[16] == 10
