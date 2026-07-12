@@ -46,7 +46,7 @@ class MapFeature:
     fclass: str
     code: int
     name: str
-    points: List[Tuple[int, int]]
+    points: bytes
 
     # [MEMORY OPTIMIZATION 2]: Используем иммутабельный (неизменяемый) кортеж по умолчанию.
     # Это позволяет всем миллионам объектов без multipolygon ссылаться на один и тот же (0,) в памяти.
@@ -64,11 +64,16 @@ class MapFeature:
 
         # [MEMORY OPTIMIZATION 3]: Отказ от List Comprehension.
         # Проходим по массиву координат ровно один раз (O(N)), не выделяя память под временные списки.
-        p0 = self.points[0]
+        iterator = struct.iter_unpack("<ii", self.points)
+        try:
+            p0 = next(iterator)
+        except StopIteration:
+            return
+
         minx, miny = p0[0], p0[1]
         maxx, maxy = p0[0], p0[1]
 
-        for x, y in self.points[1:]:
+        for x, y in iterator:
             if x < minx: minx = x
             elif x > maxx: maxx = x
 

@@ -48,12 +48,11 @@ class MapCompiler:
 
         for feature in features:
             body = bytearray(struct.pack("<iiii", feature.bbox[0], feature.bbox[1], feature.bbox[2], feature.bbox[3]))
-            body += struct.pack("<II", len(feature.parts), len(feature.points))
+            body += struct.pack("<II", len(feature.parts), len(feature.points) // 8)
 
             for part_idx in feature.parts:
                 body += struct.pack("<I", part_idx)
-            for p in feature.points:
-                body += struct.pack("<ii", p[0], p[1])
+            body += feature.points
 
             header = struct.pack(">I", record_number) + struct.pack("<I", len(body))
             record_bin = header + body

@@ -88,7 +88,7 @@ def test_endianness_mlp_compilation(memory_files):
         fclass="road",
         code=5142,
         name="test_road",
-        points=[(1000000, 1000000)],
+        points=struct.pack('<ii', 1000000, 1000000),
         parts=(0,)
     )
     feature.calculate_bbox()
@@ -124,7 +124,7 @@ def test_c_union_node_alignment_padding():
         fclass="poi",
         code=2724,
         name="test_poi",
-        points=[(1.0, 1.0)],
+        points=struct.pack('<ii', 1000000, 1000000),
         parts=(0,)
     )
     feature.calculate_bbox()
@@ -155,7 +155,7 @@ def test_dbf_padding_validation(memory_files):
             fclass="poi",
             code=2724,
             name="point",
-            points=[(1.0, 1.0)]
+            points=struct.pack('<ii', 1000000, 1000000)
         )
     ]
     filepath = "poi.db"
