@@ -32,7 +32,11 @@ class MapCompiler:
     @staticmethod
     def _pad(text: Any, length: int) -> bytes:
         """Pad text to fixed length using safe UTF-8 encoding."""
-        return safe_encode(text, length).ljust(length, b'\x00')
+        if isinstance(text, bytes):
+            text = text[:length]
+        else:
+            text = safe_encode(text, length)
+        return text.ljust(length, b'\x00')
 
     @staticmethod
     def _desc(name: str, length: int) -> bytes:
