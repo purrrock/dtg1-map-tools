@@ -56,15 +56,15 @@ portugal
 # ukraine
 
 ### RUSSIA (По федеральным округам из-за лимитов RAM) ###
-# russia-central-fed-district
-# russia-far-eastern-fed-district
-# russia-north-caucasus-fed-district
-russia-northwestern-fed-district
-# russia-siberian-fed-district
-# russia-south-fed-district
-# russia-ural-fed-district
-# russia-volga-fed-district
-# russia-kaliningrad
+# central-fed-district
+# far-eastern-fed-district
+# north-caucasus-fed-district
+northwestern-fed-district
+# siberian-fed-district
+# south-fed-district
+# ural-fed-district
+# volga-fed-district
+# kaliningrad
 
 ### ASIA ###
 # afghanistan
