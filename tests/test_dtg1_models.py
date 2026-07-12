@@ -145,3 +145,68 @@ def test_rtreenode_pack():
     expected_length = HWConfig.NODE_SIZE + 2 * HWConfig.NODE_SIZE
     assert len(packed) == expected_length
     assert len(packed) == node.bin_size
+
+def test_mapfeature_shared_memory_optimization():
+    """
+    [MEMORY OPTIMIZATION TEST]
+    Проверяет, что механизм Shared Memory (Flyweight) работает корректно.
+    Разные экземпляры MapFeature без мультиполигонов должны делить
+    ОДИН И ТОТ ЖЕ кортеж (0,) в памяти (через проверку id указателей).
+    """
+    f1 = MapFeature(osm_id="1", fclass="water", code=8200, name="Lake1", points=b'')
+    f2 = MapFeature(osm_id="2", fclass="water", code=8200, name="Lake2", points=b'')
+    
+    # Жесткая проверка: указатели (identity) на объект в RAM должны совпадать (is),
+    # а не просто быть равными по значению (==).
+    assert f1.parts is f2.parts
+    assert isinstance(f1.parts, tuple)
+    assert f1.parts == (0,)
+
+def test_rtreenode_pack_binary_structure():
+    """
+    [HARDWARE CONTRACT TEST]
+    Глубокая валидация C-Union структуры макро-узла (Nav Node) для ATS3085S.
+    Проверяет соответствие Little-Endian формату <IffffII и деление BBox на 1 000 000.0.
+    """
+    # Arrange: Создаем тестовую геометрию
+    feature = MapFeature(
+        osm_id="1", fclass="f", code=1, name="1", 
+        points=b'', 
+        bbox=(1000000, 2000000, 3000000, 4000000), 
+        v1=10, v2=20
+    )
+    
+    # ИСПРАВЛЕНИЕ ИЕРАРХИИ:
+    # 1. Упаковываем геометрию в Leaf Node (Уровень 0)
+    leaf_node = RTreeNode(level=0, children=[feature])
+    
+    # 2. Создаем Macro Node (Уровень 1), вкладывая в него Leaf Node
+    node = RTreeNode(level=1, children=[leaf_node])
+    
+    # Act: Вызываем рекурсивную упаковку от корня
+    packed_data = node.pack()
+    
+    # Assert: 1. Проверка общего размера
+    # 28 байт (Macro Node lvl 1) + 28 байт (Leaf Node lvl 0) + 28 байт (Data Node) = 84 байта
+    assert len(packed_data) == 84 
+    
+    # Отсекаем только заголовок самого макро-узла (первые 28 байт)
+    node_header = packed_data[:HWConfig.NODE_SIZE]
+    
+    # Распаковываем бинарные данные обратно, используя контрактный формат
+    unpacked = struct.unpack("<IffffII", node_header)
+    
+    # 2. Проверка аппаратного смещения Z-Culling (Early Exit pointer)
+    # v3_jump для уровня 1 должен быть равен: бинарный размер всех детей (56 байт) + 8 = 64
+    assert unpacked[0] == 64
+    
+    # 3. Проверка границы типов (Type Boundary)
+    # Целые числа (int) должны быть корректно преобразованы в IEEE-754 float
+    assert unpacked[1] == pytest.approx(1.0)  # minx
+    assert unpacked[2] == pytest.approx(2.0)  # miny
+    assert unpacked[3] == pytest.approx(3.0)  # maxx
+    assert unpacked[4] == pytest.approx(4.0)  # maxy
+    
+    # 4. Метаданные дерева
+    assert unpacked[5] == 1  # Level
+    assert unpacked[6] == 1  # Children count (один узел leaf_node)

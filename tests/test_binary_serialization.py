@@ -88,3 +88,50 @@ def test_mlp_compilation_endianness():
     # Body begins with bbox <iiii
     bbox_ints = struct.unpack('<iiii', body[0:16])
     assert bbox_ints == (2500000, 3500000, 2500000, 3500000)
+
+def test_yzl_header_encapsulation():
+    """
+    [BOOTLOADER CONTRACT TEST]
+    Проверка 32-байтного YZL заголовка: сигнатуры, размера, RAM Load Type и MD5.
+    """
+    feature = MapFeature(
+        osm_id="3", fclass="f", code=3, name="3", 
+        points=struct.pack('<ii', 0, 0), bbox=(0, 0, 0, 0), parts=(0,)
+    )
+
+    class BytesIOWrapper(io.BytesIO):
+        def close(self): pass
+
+    file_obj = BytesIOWrapper()
+
+    with patch('builtins.open', return_value=file_obj):
+        # Вызываем компиляцию, чтобы сгенерировать полный бинарник с YZL заголовком
+        MapCompiler.compile_mlp([feature], "dummy_yzl.mlp")
+
+    output = file_obj.getvalue()
+    
+    # Спецификация требует ровно 32 байта заголовка
+    assert len(output) > HWConfig.YZL_HEADER_SIZE
+    
+    # 1. Magic Signature (offset 0x00 - 3 bytes)
+    assert output[0:3] == b'YZL'
+    
+    # 2. File Magic Extension (offset 0x03 - 1 byte) -> 0x00 для MLP/DB
+    assert output[3] == 0x00
+    
+    # 3. Payload Size (offset 0x04 - 4 bytes, Little-Endian)
+    payload_size = struct.unpack('<I', output[4:8])[0]
+    assert payload_size == len(output) - HWConfig.YZL_HEADER_SIZE
+    
+    # 4. RAM Load Type (offset 0x08 - 4 bytes, Little-Endian)
+    ram_load_type = struct.unpack('<I', output[8:12])[0]
+    assert ram_load_type == HWConfig.RAM_LOAD_TYPE
+    
+    # 5. Hardware MD5 Hash (offset 0x10 - 16 bytes)
+    # Вычисляем хеш от полезной нагрузки и сверяем с тем, что записал компилятор
+    import hashlib
+    payload_data = output[HWConfig.YZL_HEADER_SIZE:]
+    expected_md5 = hashlib.md5(payload_data).digest()
+    
+    actual_md5 = output[16:32]
+    assert actual_md5 == expected_md5

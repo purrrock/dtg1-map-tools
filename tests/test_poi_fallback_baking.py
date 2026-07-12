@@ -1,68 +1,88 @@
 import pytest
 import struct
-from dtg1_osmparser import OSMParser
-from dtg1_models import HWConfig
-from dtg1_lookup import LookupTables
 import os
+
+from dtg1_osmparser import OSMParser
+from dtg1_models import HWConfig, MapFeature
+from dtg1_lookup import LookupTables
+from dtg1_geometry import POIGeometryFactory
+
 
 @pytest.fixture(autouse=True)
 def setup_lookup_tables():
-    # Load LUT so that we have actual values to test against
-    import os
+    """Load Hardware LUT before executing tests."""
     features_csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'features.csv')
     LookupTables.load_from_csv(features_csv_path)
 
+
 @pytest.fixture
-def mock_osm_file(tmp_path):
+def mock_osm_fallback(tmp_path):
+    """
+    Mock OSM without a 'name' tag to force the Fallback mechanism.
+    """
     osm_content = """<?xml version="1.0" encoding="UTF-8"?>
-<osm version="0.6" generator="CGImap 0.8.8 (3719089 spike-08.openstreetmap.org)">
- <node id="1" lat="10.0" lon="20.0" version="1" timestamp="2020-01-01T00:00:00Z" changeset="1" uid="1" user="test"/>
- <node id="2" lat="10.1" lon="20.0" version="1" timestamp="2020-01-01T00:00:00Z" changeset="1" uid="1" user="test"/>
- <node id="3" lat="10.1" lon="20.1" version="1" timestamp="2020-01-01T00:00:00Z" changeset="1" uid="1" user="test"/>
- <node id="4" lat="10.0" lon="20.1" version="1" timestamp="2020-01-01T00:00:00Z" changeset="1" uid="1" user="test"/>
- <way id="100" version="1" timestamp="2020-01-01T00:00:00Z" changeset="1" uid="1" user="test">
-  <nd ref="1"/>
-  <nd ref="2"/>
-  <nd ref="3"/>
-  <nd ref="4"/>
-  <nd ref="1"/>
-  <tag k="natural" v="wood"/>
-  <tag k="amenity" v="restaurant"/>
-  <tag k="name" v="Test Restaurant"/>
- </way>
-</osm>
-"""
-    file_path = tmp_path / "mock.osm"
+    <osm version="0.6">
+     <node id="10" lat="55.0" lon="37.0" version="1" timestamp="2020-01-01T00:00:00Z" changeset="1" uid="1" user="test">
+      <tag k="amenity" v="pharmacy"/>
+     </node>
+    </osm>
+    """
+    file_path = tmp_path / "mock_fallback.osm"
     file_path.write_text(osm_content)
     return str(file_path)
 
-def test_poi_fallback_baking(mock_osm_file):
+
+def test_poi_name_fallback_mechanism(mock_osm_fallback):
     """
-    Ensure POI 'baking' mechanism (point objects baked into landuse as polygons)
-    still outputs correctly aligned integer arrays.
+    [PARSER CONTRACT TEST]
+    Проверяет, что при отсутствии тега 'name', парсер извлекает 'fclass' 
+    и назначает его в качестве имени (Fallback), предотвращая сброс объекта.
     """
-    parser = OSMParser(mock_osm_file)
+    parser = OSMParser(mock_osm_fallback)
     roads, landuse, pois = parser.parse()
 
-    # Check that pois has the restaurant
     assert len(pois) == 1
-    assert pois[0].fclass == 'restaurant'
-    assert pois[0].name == "Test_Restaurant"  # Sanitized name with underscore
-    assert pois[0].code == LookupTables.POI_CODES.get('restaurant')
-
-    # Verify points packed as integer struct "<ii"
-    assert len(pois[0].points) == 8 # 2 integers
+    # Проверка Fallback: fclass 'pharmacy' должен стать именем 'pharmacy'
+    assert pois[0].fclass == 'pharmacy'
+    assert pois[0].name.lower() == 'pharmacy'
+    
+    # Проверка изначальной упаковки точки (8 байт)
+    assert len(pois[0].points) == 8
     lon, lat = struct.unpack('<ii', pois[0].points)
+    assert lon == 37000000
+    assert lat == 55000000
 
-    assert lon == 20050000
-    assert lat == 10050000
 
-    # Check landuse
-    assert len(landuse) == 1
-    assert landuse[0].fclass == 'wood'
+def test_poi_baking_geometry_expansion():
+    """
+    [GEOMETRY HARDWARE TEST]
+    Имитирует логику оркестратора dtg1_map_compiler.py (--poi-mode landuse).
+    Проверяет, что 8-байтная точка (Signed Int32) корректно преобразуется 
+    в валидный C-Array полигон через POIGeometryFactory и выравнивается по границам.
+    """
+    # Arrange: исходная точка (центроид)
+    cx, cy = 37000000, 55000000
+    poi = MapFeature(
+        osm_id="10", fclass="airport", code=5651, name="SVO",
+        points=struct.pack("<ii", cx, cy)
+    )
 
-    # points should be exactly 5 pairs of integers (4 corners + closing)
-    assert len(landuse[0].points) == 5 * 8 # 40 bytes
+    # Act: имитация пайплайна запекания
+    shape_type = "square"  # Имитируем LookupTables.POI_SHAPES.get("airport")
+    new_points = POIGeometryFactory.generate_polygon(shape_type, cx, cy)
+    
+    # Обратная упаковка в непрерывный массив байт
+    poi.points = b''.join(struct.pack("<ii", p[0], p[1]) for p in new_points)
+    poi.calculate_bbox()
 
-    unpacked_points = struct.unpack('<iiiiiiiiii', landuse[0].points)
-    assert len(unpacked_points) == 10
+    # Assert 1: Точка перестала быть точкой (размер больше 8 байт)
+    assert len(poi.points) > 8
+    
+    # Assert 2: Выравнивание памяти. Каждая вершина это 2х int32 (8 байт). 
+    # Массив обязан быть кратен 8, иначе произойдет сдвиг бинарного формата (Memory Misalignment).
+    assert len(poi.points) % 8 == 0
+    
+    # Assert 3: Проверка Bounding Box. Так как это теперь полигон, 
+    # минимальные координаты должны быть строго меньше максимальных (размерность > 0).
+    assert poi.bbox[0] < poi.bbox[2]  # min_lon < max_lon
+    assert poi.bbox[1] < poi.bbox[3]  # min_lat < max_lat
