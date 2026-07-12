@@ -172,3 +172,27 @@ def test_osm_parser_surface_fallback_and_byte_packing(mock_osm_file):
     assert landuse[0].fclass == 'forest'
     assert landuse[0].code == 7201
     assert len(landuse[0].points) == 40  # 5 узлов (с замыканием) * 8 байт
+
+
+@pytest.fixture
+def mock_empty_gpx_file(tmp_path):
+    """Генерация пустого, но валидного GPX-файла без треков."""
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+    <gpx xmlns="http://www.topografix.com/GPX/1/1">
+    </gpx>
+    """
+    path = tmp_path / "empty_route.gpx"
+    path.write_text(content)
+    return str(path)
+
+
+def test_gpx_parser_empty_file(mock_empty_gpx_file):
+    """
+    [GPX EMPTY FILE TEST]
+    Проверяет, что пустой gpx-файл без треков корректно парсится
+    и возвращает пустой список точек и дефолтное имя 'Route'.
+    """
+    name, points = GPXParser.parse_track(mock_empty_gpx_file)
+
+    assert name == "Route"
+    assert len(points) == 0
