@@ -12,6 +12,8 @@ of DT NO.1 G1 smartwatches (.mlp, .idx, .db).
 import sys
 import os
 import argparse
+import struct
+
 from typing import List
 
 from dtg1_models import MapFeature, HWConfig
@@ -107,11 +109,19 @@ def main() -> None:
     # 4.2 POI Baking (if required)
     if args.poi_mode == "landuse" and pois_data:
         print("[>] Baking POI objects into landuse layer using dynamic shape factory...")
+        
         for poi in pois_data:
             if not poi.points:
                 continue
             shape_type = LookupTables.POI_SHAPES.get(poi.fclass, "rhombus").lower()
-            poi.points = POIGeometryFactory.generate_polygon(shape_type, poi.points[0][0], poi.points[0][1])
+            
+            # Распаковка центроида (Signed Int32)
+            cx, cy = struct.unpack("<ii", poi.points)
+            
+            # Генерация полигона и обратная Byte-паковка
+            new_points = POIGeometryFactory.generate_polygon(shape_type, cx, cy)
+            poi.points = b''.join(struct.pack("<ii", p[0], p[1]) for p in new_points)
+            
             poi.calculate_bbox()
             landuse_data.append(poi)
 
