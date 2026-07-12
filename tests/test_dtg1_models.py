@@ -112,8 +112,8 @@ def test_rtreenode_post_init_empty():
 
 def test_rtreenode_post_init_size():
     """Test RTreeNode size computation with nested children."""
-    feature1 = MapFeature(osm_id="1", fclass="f", code=1, name="1", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(0,0,1,1))
-    feature2 = MapFeature(osm_id="2", fclass="f", code=1, name="2", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(2,2,3,3))
+    feature1 = MapFeature(osm_id="1", fclass="f", code=1, name="1", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(0, 0, 1000000, 1000000))
+    feature2 = MapFeature(osm_id="2", fclass="f", code=1, name="2", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(2000000, 2000000, 3000000, 3000000))
 
     # Level 0 node containing 2 features
     node0 = RTreeNode(level=0, children=[feature1, feature2])
@@ -122,7 +122,7 @@ def test_rtreenode_post_init_size():
     expected_child_payload_0 = 2 * HWConfig.NODE_SIZE
     assert node0.v3_jump == expected_child_payload_0 + 8
     assert node0.bin_size == HWConfig.NODE_SIZE + expected_child_payload_0
-    assert node0.bbox == (0.0, 0.0, 3.0, 3.0)
+    assert node0.bbox == (0, 0, 3000000, 3000000)
 
     # Level 1 node containing the Level 0 node
     node1 = RTreeNode(level=1, children=[node0])
@@ -131,12 +131,12 @@ def test_rtreenode_post_init_size():
     expected_child_payload_1 = node0.bin_size
     assert node1.v3_jump == expected_child_payload_1 + 8
     assert node1.bin_size == HWConfig.NODE_SIZE + expected_child_payload_1
-    assert node1.bbox == (0.0, 0.0, 3.0, 3.0)
+    assert node1.bbox == (0, 0, 3000000, 3000000)
 
 def test_rtreenode_pack():
     """Test recursive serialization of RTreeNode."""
-    feature1 = MapFeature(osm_id="1", fclass="f", code=1, name="1", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(0,0,1,1))
-    feature2 = MapFeature(osm_id="2", fclass="f", code=1, name="2", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(2,2,3,3))
+    feature1 = MapFeature(osm_id="1", fclass="f", code=1, name="1", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(0, 0, 1000000, 1000000))
+    feature2 = MapFeature(osm_id="2", fclass="f", code=1, name="2", points=struct.pack('<ii', 1100000, 2200000) + struct.pack('<ii', -1100000, 5500000) + struct.pack('<ii', 3300000, 0), bbox=(2000000, 2000000, 3000000, 3000000))
 
     node = RTreeNode(level=0, children=[feature1, feature2])
     packed = node.pack()
