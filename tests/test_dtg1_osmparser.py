@@ -268,3 +268,41 @@ def test_gpx_parser_malformed_floats(mock_malformed_gpx_file):
     assert len(points) == 2
     assert points[0] == (37654321, 55123456)
     assert points[1] == (37654300, 55123400)
+
+def test_parse_track_nonexistent_file():
+    """
+    [EDGE CASE]
+    Test that a non-existent file returns the default "Route" and an empty list cleanly.
+    """
+    name, points = GPXParser.parse_track("nonexistent_fake_file.gpx")
+    assert name == "Route"
+    assert points == []
+
+@pytest.fixture
+def mock_gpx_with_metadata(tmp_path):
+    """Generates a GPX file containing a metadata name tag."""
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+    <gpx xmlns="http://www.topografix.com/GPX/1/1">
+      <metadata>
+        <name>Metadata Route Name</name>
+      </metadata>
+      <trk>
+        <trkseg>
+          <trkpt lat="55.123" lon="37.654"></trkpt>
+        </trkseg>
+      </trk>
+    </gpx>
+    """
+    path = tmp_path / "metadata_route.gpx"
+    path.write_text(content)
+    return str(path)
+
+def test_parse_track_metadata_name(mock_gpx_with_metadata):
+    """
+    [EDGE CASE]
+    Test extracting track name from the metadata section if available.
+    """
+    name, points = GPXParser.parse_track(mock_gpx_with_metadata)
+    assert name == "Metadata Route Name"
+    assert len(points) == 1
+    assert points[0] == (37654000, 55123000)
