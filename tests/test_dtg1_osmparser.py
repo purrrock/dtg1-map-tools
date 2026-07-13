@@ -220,3 +220,51 @@ def test_parse_track_empty_gpx_without_tracks(mock_empty_gpx_without_tracks):
     name, points = GPXParser.parse_track(mock_empty_gpx_without_tracks)
     assert name == "Route"
     assert points == []
+
+@pytest.fixture
+def mock_malformed_gpx_file(tmp_path):
+    """
+    Generation of a GPX file with malformed floating-point values for latitude and longitude
+    to test error handling in GPXParser.parse_track.
+    """
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+    <gpx xmlns="http://www.topografix.com/GPX/1/1">
+      <trk>
+        <name>Malformed Route</name>
+        <trkseg>
+          <!-- Valid point -->
+          <trkpt lat="55.123456" lon="37.654321"></trkpt>
+          <!-- Invalid lat float -->
+          <trkpt lat="invalid" lon="37.654300"></trkpt>
+          <!-- Invalid lon float -->
+          <trkpt lat="55.123400" lon="NaN"></trkpt>
+          <!-- Missing lat -->
+          <trkpt lon="37.654300"></trkpt>
+          <!-- Missing lon -->
+          <trkpt lat="55.123400"></trkpt>
+          <!-- Missing both -->
+          <trkpt></trkpt>
+          <!-- Valid point -->
+          <trkpt lat="55.123400" lon="37.654300"></trkpt>
+        </trkseg>
+      </trk>
+    </gpx>
+    """
+    path = tmp_path / "malformed_route.gpx"
+    path.write_text(content)
+    return str(path)
+
+def test_gpx_parser_malformed_floats(mock_malformed_gpx_file):
+    """
+    [EDGE CASE]
+    Missing edge case: GPX track parser error handling.
+    Test that invalid or missing float values for coordinates in a GPX file
+    are caught (ValueError, TypeError) and the parser continues correctly,
+    yielding only valid coordinates.
+    """
+    name, points = GPXParser.parse_track(mock_malformed_gpx_file)
+
+    assert name == "Malformed Route"
+    assert len(points) == 2
+    assert points[0] == (37654321, 55123456)
+    assert points[1] == (37654300, 55123400)
