@@ -233,3 +233,62 @@ def test_pad_function():
 
     # 6. Non-string inputs (int)
     assert MapCompiler._pad(123, 5) == b'123\x00\x00'
+
+def test_build_rtree_empty():
+    depth, nodes = MapCompiler._build_rtree([])
+    assert depth == 0
+    assert nodes == []
+
+def test_build_rtree_single_chunk():
+    features = []
+    for i in range(HWConfig.CHUNK_SIZE):
+        f = MapFeature(
+            osm_id=str(i),
+            fclass="poi",
+            code=2724,
+            name=f"test_{i}",
+            points=struct.pack('<ii', i*1000, i*1000)
+        )
+        f.calculate_bbox()
+        features.append(f)
+
+    depth, nodes = MapCompiler._build_rtree(features)
+    assert depth == 1
+    assert len(nodes) == 1
+    assert len(nodes[0].children) == HWConfig.CHUNK_SIZE
+
+def test_build_rtree_multiple_chunks():
+    features = []
+    for i in range(HWConfig.CHUNK_SIZE + 1):
+        f = MapFeature(
+            osm_id=str(i),
+            fclass="poi",
+            code=2724,
+            name=f"test_{i}",
+            points=struct.pack('<ii', i*1000, i*1000)
+        )
+        f.calculate_bbox()
+        features.append(f)
+
+    depth, nodes = MapCompiler._build_rtree(features)
+    assert depth == 1
+    assert len(nodes) == 2
+
+def test_build_rtree_multiple_levels():
+    features = []
+    # 14 chunks of 14 elements fits in 196 elements. Let's do 197 to spill over.
+    for i in range(HWConfig.CHUNK_SIZE * HWConfig.CHUNK_SIZE + 1):
+        f = MapFeature(
+            osm_id=str(i),
+            fclass="poi",
+            code=2724,
+            name=f"test_{i}",
+            points=struct.pack('<ii', i*1000, i*1000)
+        )
+        f.calculate_bbox()
+        features.append(f)
+
+    depth, nodes = MapCompiler._build_rtree(features)
+    assert depth == 2
+    # At level 2 we should have 2 nodes, since 197 elements > 196 (14*14), needing at least 15 nodes at level 1, which requires 2 level 2 nodes.
+    assert len(nodes) == 2
