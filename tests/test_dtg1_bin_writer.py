@@ -210,3 +210,62 @@ def test_desc_field_descriptor():
     assert len(desc_bytes_empty) == 32
     assert desc_bytes_empty[0:11] == b'\x00' * 11
     assert desc_bytes_empty[16] == 10
+
+def test_build_rtree_empty():
+    """Test _build_rtree with empty features list."""
+    depth, nodes = MapCompiler._build_rtree([])
+    assert depth == 0
+    assert nodes == []
+
+def test_build_rtree_single_level():
+    """Test _build_rtree with a small number of features that fits in one CHUNK_SIZE."""
+    features = []
+    for i in range(10):
+        feature = MapFeature(
+            osm_id=str(i),
+            fclass="poi",
+            code=2724,
+            name=f"test_poi_{i}",
+            points=struct.pack('<ii', i * 1000000, i * 1000000)
+        )
+        feature.calculate_bbox()
+        features.append(feature)
+
+    depth, nodes = MapCompiler._build_rtree(features)
+    assert depth == 1
+    assert len(nodes) == 1
+    assert nodes[0].level == 0
+    assert len(nodes[0].children) == 10
+
+def test_build_rtree_multiple_levels():
+    """Test _build_rtree with enough features to require multiple nested R-Tree levels."""
+    features = []
+    # Create 200 features. CHUNK_SIZE is 14.
+    # At level 0, we'll have ceil(200 / 14) = 15 chunks (which are nodes of level 0)
+    # At level 1, those 15 nodes will be clustered. ceil(15 / 14) = 2 chunks (nodes of level 1)
+    # The depth returned should be 2.
+    for i in range(200):
+        feature = MapFeature(
+            osm_id=str(i),
+            fclass="poi",
+            code=2724,
+            name=f"test_poi_{i}",
+            points=struct.pack('<ii', i * 1000000, i * 1000000)
+        )
+        feature.calculate_bbox()
+        features.append(feature)
+
+    depth, root_nodes = MapCompiler._build_rtree(features)
+
+    assert depth == 2
+    assert len(root_nodes) == 2
+    assert all(node.level == 1 for node in root_nodes)
+
+    # Check the children of the first root node
+    assert len(root_nodes[0].children) > 0
+    assert all(child.level == 0 for child in root_nodes[0].children)
+
+    # Check that the first child node (level 0) contains the actual MapFeatures
+    first_level0_node = root_nodes[0].children[0]
+    assert len(first_level0_node.children) > 0
+    assert all(isinstance(f, MapFeature) for f in first_level0_node.children)
