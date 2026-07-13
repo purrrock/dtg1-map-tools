@@ -210,3 +210,26 @@ def test_desc_field_descriptor():
     assert len(desc_bytes_empty) == 32
     assert desc_bytes_empty[0:11] == b'\x00' * 11
     assert desc_bytes_empty[16] == 10
+
+
+def test_pad_function():
+    """
+    Test the _pad function handles standard padding and truncation for str, int, and bytes.
+    """
+    # 1. Normal string padding
+    assert MapCompiler._pad("abc", 5) == b'abc\x00\x00'
+
+    # 2. Exact length string padding
+    assert MapCompiler._pad("abcde", 5) == b'abcde'
+
+    # 3. Truncation (longer than length)
+    assert MapCompiler._pad("abcdef", 5) == b'abcde'
+
+    # 4. Bytes padding
+    assert MapCompiler._pad(b"xyz", 5) == b'xyz\x00\x00'
+
+    # 5. Bytes truncation (catches the case where bytes inputs longer than length are not truncated)
+    assert MapCompiler._pad(b"xyz123", 4) == b'xyz1'
+
+    # 6. Non-string inputs (int)
+    assert MapCompiler._pad(123, 5) == b'123\x00\x00'
