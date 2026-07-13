@@ -30,7 +30,7 @@
 # iceland
 # ireland-and-northern-ireland
 # isle-of-man
-italy
+# italy
 # kosovo
 # latvia
 # liechtenstein
@@ -44,7 +44,7 @@ italy
 # netherlands
 # norway
 # poland
-portugal
+# portugal
 # romania
 # serbia
 # slovakia
@@ -58,8 +58,8 @@ portugal
 ### RUSSIA (По федеральным округам из-за лимитов RAM) ###
 # central-fed-district
 # far-eastern-fed-district
-# north-caucasus-fed-district
-northwestern-fed-district
+north-caucasus-fed-district
+# northwestern-fed-district
 # siberian-fed-district
 # south-fed-district
 # ural-fed-district
@@ -73,7 +73,7 @@ northwestern-fed-district
 # bangladesh
 # bhutan
 # cambodia
-# china
+china
 # gcc-states
 # india
 # indonesia
