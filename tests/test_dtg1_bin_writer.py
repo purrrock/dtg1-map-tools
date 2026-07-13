@@ -292,3 +292,116 @@ def test_build_rtree_multiple_levels():
     assert depth == 2
     # At level 2 we should have 2 nodes, since 197 elements > 196 (14*14), needing at least 15 nodes at level 1, which requires 2 level 2 nodes.
     assert len(nodes) == 2
+
+def test_compile_idx_poi_empty(memory_files):
+    """Test compiling IDX for empty POI list."""
+    filepath = "poi_empty.idx"
+    MapCompiler.compile_idx([], filepath, is_poi=True)
+
+    output = memory_files[filepath].getvalue()
+
+    # YZL Header (32 bytes) + SQT header (16 bytes)
+    assert len(output) == 48
+    assert output[0:3] == b'YZL'
+    assert output[32:48] == b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0)
+
+def test_compile_idx_poi_features(memory_files):
+    """Test compiling IDX for POI list with features."""
+    feature = MapFeature(
+        osm_id="123",
+        fclass="poi",
+        code=2724,
+        name="test_poi",
+        points=struct.pack('<ii', 1000000, 1000000),
+        parts=(0,)
+    )
+    feature.calculate_bbox()
+
+    filepath = "poi_features.idx"
+    MapCompiler.compile_idx([feature], filepath, is_poi=True)
+
+    output = memory_files[filepath].getvalue()
+
+    # YZL Header + SQT Header (16 bytes) + 1 Node
+    assert len(output) == 32 + 16 + (HWConfig.NODE_SIZE * 2) # Macro node (28) + Data node (28)
+    assert output[32:40] == b'SQT\x01\x01\x00\x00\x00'
+
+    depth = struct.unpack("<I", output[40:44])[0]
+    num_nodes = struct.unpack("<I", output[44:48])[0]
+
+    assert depth == 1
+    assert num_nodes == 1
+
+def test_compile_idx_standard_empty(memory_files):
+    """Test compiling IDX for standard empty GIS geometry."""
+    filepath = "standard_empty.idx"
+    MapCompiler.compile_idx([], filepath, is_poi=False)
+
+    output = memory_files[filepath].getvalue()
+
+    # YZL Header + 3 * empty SQT Header (16 bytes)
+    assert len(output) == 32 + 3 * 16
+    assert output[32:48] == b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0)
+    assert output[48:64] == b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0)
+    assert output[64:80] == b'SQT\x01\x01\x00\x00\x00' + struct.pack("<II", 0, 0)
+
+    # Check YZL header flags for is_idx=True
+    assert output[3] == 0x08  # b'YZL\x08'
+    lod2_size = struct.unpack(">I", output[12:16])[0]
+    assert lod2_size == 16  # Empty LOD2 only has SQT header
+
+def test_compile_idx_standard_features(memory_files):
+    """Test compiling IDX for standard GIS geometry with LOD filtering."""
+    from dtg1_lookup import LookupTables
+    # Reset just in case, though it should be a clean state
+    LookupTables.DISPLAY_SCALES = {}
+    LookupTables.DISPLAY_SCALES[100] = 20    # Only LOD0
+    LookupTables.DISPLAY_SCALES[200] = 500   # LOD0, LOD1
+    LookupTables.DISPLAY_SCALES[300] = 1000  # LOD0, LOD1, LOD2
+
+    f1 = MapFeature(osm_id="1", fclass="a", code=100, name="test1", points=struct.pack('<ii', 1000000, 1000000), parts=(0,))
+    f2 = MapFeature(osm_id="2", fclass="b", code=200, name="test2", points=struct.pack('<ii', 2000000, 2000000), parts=(0,))
+    f3 = MapFeature(osm_id="3", fclass="c", code=300, name="test3", points=struct.pack('<ii', 3000000, 3000000), parts=(0,))
+
+    for f in [f1, f2, f3]:
+        f.calculate_bbox()
+
+    filepath = "standard_features.idx"
+    MapCompiler.compile_idx([f1, f2, f3], filepath, is_poi=False)
+
+    output = memory_files[filepath].getvalue()
+
+    # Payload sizes:
+    # LOD0: 3 features -> SQT Header (16) + MacroNode (28) + 3*DataNode (3*28) = 128
+    # LOD1: 2 features -> SQT Header (16) + MacroNode (28) + 2*DataNode (2*28) = 100
+    # LOD2: 1 feature -> SQT Header (16) + MacroNode (28) + 1*DataNode (28) = 72
+
+    assert len(output) == 32 + 128 + 100 + 72
+
+    payload_size = struct.unpack("<I", output[4:8])[0]
+    assert payload_size == 128 + 100 + 72
+
+    lod2_size = struct.unpack(">I", output[12:16])[0]
+    assert lod2_size == 72
+
+def test_compile_idx_standard_cached(memory_files):
+    """Test compiling IDX for standard GIS geometry with identical LODs to trigger caching."""
+    from dtg1_lookup import LookupTables
+    LookupTables.DISPLAY_SCALES[300] = 1000  # Matches all LODs
+
+    f1 = MapFeature(osm_id="1", fclass="a", code=300, name="test1", points=struct.pack('<ii', 1000000, 1000000), parts=(0,))
+    f1.calculate_bbox()
+
+    filepath = "standard_cached.idx"
+    MapCompiler.compile_idx([f1], filepath, is_poi=False)
+
+    output = memory_files[filepath].getvalue()
+
+    # LOD0, 1, 2 all have 1 feature -> SQT Header (16) + MacroNode (28) + DataNode (28) = 72
+
+    # 3 identical layers should use caching for the payload
+    payload_size = struct.unpack("<I", output[4:8])[0]
+    assert payload_size == 3 * 72
+
+    lod2_size = struct.unpack(">I", output[12:16])[0]
+    assert lod2_size == 72
