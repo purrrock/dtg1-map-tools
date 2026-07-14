@@ -1,7 +1,8 @@
+import io
 import pytest
 import sys
 from dtg1_lookup import LookupTables
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 import builtins
 
 def test_load_from_csv_file_not_found(capsys):
@@ -38,3 +39,27 @@ def test_load_from_csv_general_exception(capsys):
 
         captured = capsys.readouterr()
         assert f"[-] Critical error parsing {filepath}: Unexpected file access error" in captured.out
+
+def test_load_from_csv_value_error():
+    """
+    [EDGE CASE TEST]
+    Verifies that when remap_code or remap_lod are invalid integers,
+    a ValueError is caught and the row is correctly skipped.
+    """
+    csv_content = (
+        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
+        "1;invalid_code;;;roads;;#000000;INVALID;;100;1;\n"
+        "2;invalid_lod;;;roads;;#000000;1000;;INVALID;1;\n"
+        "3;valid;;;roads;;#000000;1001;;100;1;\n"
+    )
+
+    # Reset state to be safe
+    LookupTables.HIGHWAY_CODES.clear()
+
+    with patch('builtins.open', mock_open(read_data=csv_content)):
+        LookupTables.load_from_csv("dummy.csv")
+
+    assert "invalid_code" not in LookupTables.HIGHWAY_CODES
+    assert "invalid_lod" not in LookupTables.HIGHWAY_CODES
+    assert "valid" in LookupTables.HIGHWAY_CODES
+    assert LookupTables.HIGHWAY_CODES["valid"] == 1001
