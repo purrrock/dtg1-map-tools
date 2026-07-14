@@ -11,23 +11,35 @@ from dtg1_models import MapFeature, RTreeNode, HWConfig
 
 @pytest.fixture
 def memory_files():
-    """Provides isolated file I/O operations directly to RAM via io.BytesIO."""
+    """Provides isolated file I/O operations directly to RAM via io.BytesIO/StringIO."""
     files = {}
+
+    class StringIOWrapper(io.StringIO):
+        def __init__(self, path):
+            super().__init__()
+            self.path = path
+        def close(self):
+            pass
 
     class BytesIOWrapper(io.BytesIO):
         def __init__(self, path):
             super().__init__()
             self.path = path
-
         def close(self):
             # Block the `.close()` call so we can read the data during tests
             pass
 
     def mock_open_func(filepath, mode='rb', **kwargs):
         if filepath not in files:
-            files[filepath] = BytesIOWrapper(filepath)
+            if 'b' in mode:
+                files[filepath] = BytesIOWrapper(filepath)
+            else:
+                files[filepath] = StringIOWrapper(filepath)
         elif 'w' in mode:
-            files[filepath] = BytesIOWrapper(filepath)
+            if 'b' in mode:
+                files[filepath] = BytesIOWrapper(filepath)
+            else:
+                files[filepath] = StringIOWrapper(filepath)
 
         # Reset cursor for reads
         if 'r' in mode:
@@ -405,3 +417,76 @@ def test_compile_idx_standard_cached(memory_files):
 
     lod2_size = struct.unpack(">I", output[12:16])[0]
     assert lod2_size == 72
+
+def test_compile_db_no_names(memory_files):
+    """Test compile_db when features have no name (early return)."""
+    feature = MapFeature(
+        osm_id="123",
+        fclass="road",
+        code=5142,
+        name="",
+        points=struct.pack('<ii', 1000000, 1000000),
+        parts=(0,)
+    )
+    feature.calculate_bbox()
+    feature.v2 = 999  # to verify it gets set to 0
+
+    filepath = "no_names.db"
+    MapCompiler.compile_db([feature], filepath, is_poi=False)
+
+    assert memory_files.get(filepath) is None or len(memory_files[filepath].getvalue()) == 0
+    assert feature.v2 == 0
+
+def test_compile_db_poi_empty(memory_files):
+    """Test compile_db when is_poi is True and features are empty (early return)."""
+    filepath = "empty_poi.db"
+    MapCompiler.compile_db([], filepath, is_poi=True)
+
+    assert memory_files.get(filepath) is None or len(memory_files[filepath].getvalue()) == 0
+
+def test_build_str_layer_empty():
+    """Test _build_str_layer with empty list."""
+    assert MapCompiler._build_str_layer([], 0) == []
+
+def test_build_str_layer_zero_slices():
+    """Test _build_str_layer with 0 slices."""
+    with patch('math.ceil', return_value=0):
+        class Dummy:
+            bbox = (0,0,0,0)
+        assert MapCompiler._build_str_layer([Dummy()], 0) == []
+
+def test_create_empty_layer(memory_files):
+    """Test create_empty_layer."""
+    prefix = "dummy"
+    MapCompiler.create_empty_layer(prefix)
+
+    assert memory_files[f"{prefix}.mlp"].getvalue() == bytearray.fromhex("595A4C00000000000000000400000000D41D8CD98F00B204E9800998ECF8427E")
+    assert memory_files[f"{prefix}.idx"].getvalue() == bytearray.fromhex("595A4C10300000000000000400000010E5F9D2228804251B5F9E3EAB298C30E5535154010100000000000000000000005351540101000000000000000000000053515401010000000000000000000000")
+
+def test_create_map_name_empty(memory_files):
+    """Test create_map_name with empty features."""
+    MapCompiler.create_map_name("Test Map", [], "empty.name")
+    assert memory_files.get("empty.name") is None or len(memory_files["empty.name"].getvalue()) == 0
+
+def test_create_map_name_features(memory_files):
+    """Test create_map_name with features."""
+    f1 = MapFeature(osm_id="1", fclass="a", code=100, name="test1", points=struct.pack('<iiii', -1000000, 2000000, 3000000, 4000000), parts=(0,))
+    f1.calculate_bbox()
+
+    MapCompiler.create_map_name("Test Map", [f1], "test.name")
+
+    import json
+    content = memory_files["test.name"].getvalue()
+    data = json.loads(content)
+
+    assert data["mapName"] == "Test Map"
+    assert data["centerLat"] == 3.0
+    assert data["centerLon"] == 1.0
+
+
+def test_desc_additional_cases():
+    """Test _desc with name longer than 11 characters to ensure truncation works."""
+    desc1 = MapCompiler._desc("a_very_long_name_that_exceeds_11_chars", 5)
+    assert len(desc1) == 32
+    assert desc1[0:11] == b'a_very_long'
+    assert desc1[16] == 5
