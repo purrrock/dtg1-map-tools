@@ -311,6 +311,62 @@ def test_parse_track_metadata_name(mock_gpx_with_metadata):
     assert len(points) == 1
     assert points[0] == (37654000, 55123000)
 
+@pytest.mark.parametrize("smoothness_val, expected", [
+    ("bad", "unpaved"),
+    ("very_bad", "unpaved"),
+    ("horrible", "unpaved"),
+    ("very_horrible", "unpaved"),
+    ("impassable", "unpaved"),
+    ("excellent", "paved"),
+    ("good", "paved"),
+    ("intermediate", "paved"),
+])
+def test_analyze_road_surface_smoothness_exhaustive(smoothness_val, expected):
+    parser = OSMParser("dummy.osm")
+    assert parser._analyze_road_surface({"smoothness": smoothness_val}) == expected
+
+@pytest.mark.parametrize("surface_val, expected", [
+    # Unpaved surfaces
+    ("unpaved", "unpaved"),
+    ("grass_paver", "unpaved"),
+    ("sett", "unpaved"),
+    ("unhewn_cobblestone", "unpaved"),
+    ("cobblestone", "unpaved"),
+    ("bricks", "unpaved"),
+    ("metal_grid", "unpaved"),
+    ("wood", "unpaved"),
+    ("stepping_stones", "unpaved"),
+    ("tiles", "unpaved"),
+    ("fibre_reinforced_polymer_grate", "unpaved"),
+    ("compacted", "unpaved"),
+    ("fine_gravel", "unpaved"),
+    ("gravel", "unpaved"),
+    ("shells", "unpaved"),
+    ("rock", "unpaved"),
+    ("pebblestone", "unpaved"),
+    ("ground", "unpaved"),
+    ("dirt", "unpaved"),
+    ("earth", "unpaved"),
+    ("laterite", "unpaved"),
+    ("grass", "unpaved"),
+    ("mud", "unpaved"),
+    ("sand", "unpaved"),
+    ("woodchips", "unpaved"),
+    ("snow", "unpaved"),
+    ("ice", "unpaved"),
+    ("salt", "unpaved"),
+    # Paved surfaces
+    ("paved", "paved"),
+    ("asphalt", "paved"),
+    ("chipseal", "paved"),
+    ("concrete", "paved"),
+    ("paving_stones", "paved"),
+    ("metal", "paved"),
+])
+def test_analyze_road_surface_exhaustive(surface_val, expected):
+    parser = OSMParser("dummy.osm")
+    assert parser._analyze_road_surface({"surface": surface_val}) == expected
+
 def test_analyze_road_surface():
     """
     [ROAD SURFACE ANALYZER TEST]
@@ -323,17 +379,11 @@ def test_analyze_road_surface():
     assert parser._analyze_road_surface({"smoothness": "bad", "surface": "asphalt"}) == "unpaved"
     assert parser._analyze_road_surface({"smoothness": "excellent", "surface": "dirt"}) == "paved"
 
-    # 2. Smoothness only
-    assert parser._analyze_road_surface({"smoothness": "impassable"}) == "unpaved"
-    assert parser._analyze_road_surface({"smoothness": "intermediate"}) == "paved"
+    # 2. Smoothness only (edge cases not covered by exhaustive tests)
+    assert parser._analyze_road_surface({"smoothness": "unknown_smoothness"}) is None
 
-    # 3. Surface only
-    assert parser._analyze_road_surface({"surface": "dirt"}) == "unpaved"
-    assert parser._analyze_road_surface({"surface": "asphalt"}) == "paved"
-    assert parser._analyze_road_surface({"surface": "paving_stones"}) == "paved"
-    assert parser._analyze_road_surface({"surface": "woodchips"}) == "unpaved"
+    # 3. Surface only (edge cases not covered by exhaustive tests)
+    assert parser._analyze_road_surface({"surface": "unknown_surface"}) is None
 
     # 4. Unknown or missing tags
-    assert parser._analyze_road_surface({"surface": "unknown_surface"}) is None
-    assert parser._analyze_road_surface({"smoothness": "unknown_smoothness"}) is None
     assert parser._analyze_road_surface({}) is None
