@@ -162,10 +162,17 @@ def main() -> None:
 
     # 5. Export JSON Metadata
     if meta_all:
-        MapCompiler.create_map_name("DTG1_Map", meta_all, out_path("map.name"))
+        # [CI/CD INTEGRATION]: Динамическое получение имени региона из среды GitHub Actions
+        env_region = os.environ.get('REGION_NAME')
+        if env_region:
+            # Преобразуем идентификаторы Geofabrik (например, "us-midwest" -> "Us Midwest")
+            map_name = env_region.replace('-', ' ').title()
+        else:
+            map_name = "DTG1_Map"
+
+        MapCompiler.create_map_name(map_name, meta_all, out_path("map.name"))
 
     print("\n[SUCCESS] Map package compiled successfully!")
-
 
 if __name__ == "__main__":
     main()

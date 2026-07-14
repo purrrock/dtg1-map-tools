@@ -4,7 +4,7 @@
 
 set -e
 
-REGION_NAME=$1
+export REGION_NAME=$1
 
 echo "1. Querying Geofabrik API for region: $REGION_NAME..."
 # Используем jq для парсинга GeoJSON индекса серверов Geofabrik и извлечения PBF URL
