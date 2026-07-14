@@ -24,3 +24,4 @@ This file contains strict rules, constraints, and contextual information for AI 
 1. Before proposing structural changes to binary file generation, you MUST read `dtg1_map_specification.md`.
 2. Do not introduce external C/C++ dependencies for packing; use Python's built-in `struct` and `math` libraries to ensure standalone `.exe` compatibility.
 3. If creating an automated Pull Request, prefix the title with `[AI]` and explicitly state which binary layer (`.mlp`, `.idx`, `.db`) your changes affect.
+4. Completely ignore the /tools/ and /contours/ folders.
