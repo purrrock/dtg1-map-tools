@@ -41,7 +41,7 @@ class MapCompiler:
     @staticmethod
     def _desc(name: str, length: int) -> bytes:
         """Pack dBase III field descriptor."""
-        return name.encode('ascii').ljust(11, b'\x00') + b'C' + b'\x00' * 4 + bytes([length]) + b'\x00' * 15
+        return name.encode('ascii')[:11].ljust(11, b'\x00') + b'C' + b'\x00' * 4 + bytes([length]) + b'\x00' * 15
 
     @classmethod
     def compile_mlp(cls, features: List[MapFeature], filepath: str) -> None:
