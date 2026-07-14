@@ -8,6 +8,7 @@ import re
 import array
 import bisect
 import itertools
+import struct
 from lxml import etree as ET
 from functools import lru_cache
 from typing import List, Tuple, Dict, Optional
@@ -370,7 +371,6 @@ class OSMParser:
         except (TypeError, ValueError):
             return
 
-        import struct
         points_bytes = struct.pack("<ii", node_coord[0], node_coord[1])
         feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points_bytes)
         feature.calculate_bbox()
@@ -443,7 +443,6 @@ class OSMParser:
                     avg_lat = sum(p[1] for p in unique_points) // len(unique_points)
 
                     poi_name = name if name else str(poi_fclass)
-                    import struct
                     points_bytes = struct.pack("<ii", avg_lon, avg_lat)
                     poi_feature = MapFeature(
                         osm_id=f"v{osm_id}",
@@ -510,7 +509,6 @@ class OSMParser:
                 if not self._is_clockwise(points):
                     points.reverse()
 
-                import struct
                 points_bytes = b''.join(struct.pack("<ii", p[0], p[1]) for p in points)
 
                 code = LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE)
@@ -580,7 +578,6 @@ class OSMParser:
         osm_id = elem.get('id')
         if combined_points and parts and osm_id:
             code = LookupTables.POLYGON_CODES.get(fclass, HWConfig.DEFAULT_POLYGON_CODE)
-            import struct
             points_bytes = b''.join(struct.pack("<ii", p[0], p[1]) for p in combined_points)
             feature = MapFeature(osm_id=osm_id, fclass=fclass, code=code, name=name, points=points_bytes, parts=parts)
             feature.calculate_bbox()
