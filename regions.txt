@@ -34,7 +34,7 @@
 # kosovo
 # latvia
 # liechtenstein
-# lithuania
+lithuania
 # luxembourg
 # macedonia
 # malta
@@ -52,13 +52,13 @@
 # spain
 # sweden
 # switzerland
-# turkey
-# ukraine
+turkey
+ukraine
 
 ### RUSSIA (По федеральным округам из-за лимитов RAM) ###
 # central-fed-district
 # far-eastern-fed-district
-north-caucasus-fed-district
+# north-caucasus-fed-district
 # northwestern-fed-district
 # siberian-fed-district
 # south-fed-district
@@ -82,9 +82,9 @@ china
 # israel-and-palestine
 # japan
 # jordan
-# kazakhstan
-# kyrgyzstan
-# laos
+kazakhstan
+kyrgyzstan
+laos
 # lebanon
 # malaysia-singapore-brunei
 # maldives
@@ -99,7 +99,7 @@ china
 # syria
 # taiwan
 # tajikistan
-# thailand
+thailand
 # turkmenistan
 # uzbekistan
 # vietnam
@@ -128,22 +128,22 @@ china
 # us-west
 
 ### NORTH AMERICA - CANADA REGIONS ###
-# canada/alberta
-# canada/british-columbia
-# canada/manitoba
-# canada/new-brunswick
-# canada/newfoundland-and-labrador
-# canada/northwest-territories
-# canada/nova-scotia
-# canada/nunavut
-# canada/ontario
-# canada/prince-edward-island
-# canada/quebec
-# canada/saskatchewan
-# canada/yukon
+# alberta
+# british-columbia
+# manitoba
+# new-brunswick
+# newfoundland-and-labrador
+# northwest-territories
+# nova-scotia
+# nunavut
+# ontario
+# prince-edward-island
+quebec
+# saskatchewan
+# yukon
 
 ### SOUTH AMERICA ###
-# argentina
+argentina
 # bolivia
 # brazil
 # chile
@@ -156,7 +156,7 @@ china
 # venezuela
 
 ### AFRICA ###
-# algeria
+algeria
 # angola
 # benin
 # botswana
@@ -217,7 +217,7 @@ china
 # cook-islands
 # fiji
 # new-caledonia
-# new-zealand
+new-zealand
 # niue
 # palau
 # papua-new-guinea
