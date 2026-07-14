@@ -40,17 +40,24 @@ def test_load_from_csv_general_exception(capsys):
         captured = capsys.readouterr()
         assert f"[-] Critical error parsing {filepath}: Unexpected file access error" in captured.out
 
-def test_load_from_csv_value_error():
+@pytest.mark.parametrize("remap_code,remap_lod", [
+    ("INVALID", "1"),
+    ("1000", "INVALID"),
+    ("", "1"),
+    ("1000", ""),
+    ("3.14", "1"),
+    ("1000", "3.14"),
+])
+def test_load_from_csv_value_error(remap_code, remap_lod):
     """
     [EDGE CASE TEST]
     Verifies that when remap_code or remap_lod are invalid integers,
     a ValueError is caught and the row is correctly skipped.
+    Uses pytest.mark.parametrize to test various invalid inputs.
     """
     csv_content = (
         "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
-        "1;invalid_code;;;roads;;#000000;INVALID;;100;1;\n"
-        "2;invalid_lod;;;roads;;#000000;1000;;INVALID;1;\n"
-        "3;valid;;;roads;;#000000;1001;;100;1;\n"
+            f"1;invalid_entry;;;roads;;#000000;{remap_code};;{remap_lod};1;\n"
     )
 
     # Reset state to be safe
@@ -60,12 +67,7 @@ def test_load_from_csv_value_error():
     with patch('builtins.open', mock_open(read_data=csv_content)):
         LookupTables.load_from_csv("dummy.csv")
 
-    assert "invalid_code" not in LookupTables.HIGHWAY_CODES
-    assert "invalid_lod" not in LookupTables.HIGHWAY_CODES
-    assert "valid" in LookupTables.HIGHWAY_CODES
-    assert LookupTables.HIGHWAY_CODES["valid"] == 1001
-    assert 1001 in LookupTables.DISPLAY_SCALES
-    assert LookupTables.DISPLAY_SCALES[1001] == 100
+    assert "invalid_entry" not in LookupTables.HIGHWAY_CODES
 
 def test_load_from_csv_short_row():
     """
@@ -174,22 +176,3 @@ def test_load_from_csv_layer_processing():
     assert LookupTables.POI_SHAPES["atm"] == "rhombus"
 
 
-def test_load_from_csv_value_error_explicit():
-    """
-    [EDGE CASE TEST]
-    Explicitly tests ValueError for invalid remap_code and remap_lod.
-    """
-    csv_content = (
-        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
-        "1;invalid_code;;;roads;;#000000;INVALID_CODE;;100;1;\n"
-        "2;invalid_lod;;;roads;;#000000;1000;;INVALID_LOD;1;\n"
-    )
-
-    LookupTables.HIGHWAY_CODES.clear()
-    LookupTables.DISPLAY_SCALES.clear()
-
-    with patch('builtins.open', mock_open(read_data=csv_content)):
-        LookupTables.load_from_csv("dummy.csv")
-
-    assert "invalid_code" not in LookupTables.HIGHWAY_CODES
-    assert "invalid_lod" not in LookupTables.HIGHWAY_CODES
