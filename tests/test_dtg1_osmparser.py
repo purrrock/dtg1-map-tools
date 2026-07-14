@@ -1,6 +1,7 @@
 import pytest
 import struct
 import array
+from unittest.mock import patch, mock_open
 from lxml import etree as ET
 
 from dtg1_osmparser import OSMParser, GPXParser, _sanitize_name_cached
@@ -387,3 +388,39 @@ def test_analyze_road_surface():
 
     # 4. Unknown or missing tags
     assert parser._analyze_road_surface({}) is None
+
+@patch('sys.platform', 'linux')
+@patch('builtins.open', side_effect=Exception("Mocked open failure"))
+@patch('builtins.print')
+def test_osm_parser_vmrss_exception_handling(mock_print, mock_open_func):
+    """
+    Missing error test: VmRSS exception handling in dtg1_osmparser.py
+    Tests that if reading /proc/self/status fails, the exception is caught
+    and the parsing process continues without crashing.
+    """
+    parser = OSMParser("dummy.osm")
+    # Bypass pass1 cache check since we mock iterparse
+    parser.node_ids = []
+    parser.node_coords = []
+
+    class DummyElem:
+        def __init__(self, tag):
+            self.tag = tag
+        def clear(self): pass
+        def getprevious(self): return None
+        def getparent(self): return [self]
+        def iterchildren(self, tag): return []
+        def get(self, key): return None
+
+    def mock_iterparse(*args, **kwargs):
+        elem = DummyElem('node')
+        # 524287 to trigger on the 524288th
+        for i in range(524288):
+            yield ('end', elem)
+
+    with patch('dtg1_osmparser.ET.iterparse', side_effect=mock_iterparse):
+        # We don't want to spam stdout, so we can mock print or just let it pass
+        parser._pass2_build_features()
+
+    # If we reached here, no exception was raised
+    assert True
