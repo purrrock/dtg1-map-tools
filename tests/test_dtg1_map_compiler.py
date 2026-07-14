@@ -250,3 +250,10 @@ def test_main_poi_native_no_pois(mock_parse_args, mock_lookup, mock_osm_parser, 
 
     # compile_db with is_poi=True should not be called
     assert not any(call.kwargs.get('is_poi') for call in mock_map_compiler.compile_db.call_args_list)
+
+def test_out_path():
+    from dtg1_map_compiler import out_path
+    base_dir = "/fake/base"
+    filename = "test.mlp"
+    result = out_path(base_dir, filename)
+    assert result == os.path.join(base_dir, filename)

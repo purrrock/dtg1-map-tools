@@ -36,6 +36,11 @@ def get_base_directory() -> str:
         return os.path.dirname(os.path.abspath(__file__))
 
 
+def out_path(base_dir: str, filename: str) -> str:
+    """Helper to route output binary files to the base directory."""
+    return os.path.join(base_dir, filename)
+
+
 def main() -> None:
     cli_parser = argparse.ArgumentParser(description="DT G1 Map Compiler (Platform ATS3085S)")
     cli_parser.add_argument(
@@ -93,17 +98,14 @@ def main() -> None:
             print(f"[~] Directory '{routes_dir_path}/' is empty. No GPX tracks to inject.")
 
     # 4. Serialize Layers
-    # Helper to route output binary files to the base directory
-    def out_path(filename: str) -> str:
-        return os.path.join(base_dir, filename)
 
     meta_all: List[MapFeature] = []
 
     # 4.1 Roads Layer
     if roads_data:
-        MapCompiler.compile_mlp(roads_data, out_path("roads.mlp"))
-        MapCompiler.compile_db(roads_data, out_path("roads.db"))
-        MapCompiler.compile_idx(roads_data, out_path("roads.idx"))
+        MapCompiler.compile_mlp(roads_data, out_path(base_dir, "roads.mlp"))
+        MapCompiler.compile_db(roads_data, out_path(base_dir, "roads.db"))
+        MapCompiler.compile_idx(roads_data, out_path(base_dir, "roads.idx"))
         meta_all.extend(roads_data)
 
     # 4.2 POI Baking (if required)
@@ -133,18 +135,18 @@ def main() -> None:
     water_only = [f for f in landuse_data if f.code == HWConfig.WATER_CODE]
 
     if landuse_only:
-        MapCompiler.compile_mlp(landuse_only, out_path("landuse.mlp"))
-        MapCompiler.compile_db(landuse_only, out_path("landuse.db"))
-        MapCompiler.compile_idx(landuse_only, out_path("landuse.idx"))
+        MapCompiler.compile_mlp(landuse_only, out_path(base_dir, "landuse.mlp"))
+        MapCompiler.compile_db(landuse_only, out_path(base_dir, "landuse.db"))
+        MapCompiler.compile_idx(landuse_only, out_path(base_dir, "landuse.idx"))
         meta_all.extend(landuse_only)
     else:
         # Pass the absolute prefix to the empty layer creation method
-        MapCompiler.create_empty_layer(out_path("landuse"))
+        MapCompiler.create_empty_layer(out_path(base_dir, "landuse"))
 
     if water_only:
-        MapCompiler.compile_mlp(water_only, out_path("water.mlp"))
-        MapCompiler.compile_db(water_only, out_path("water.db"))
-        MapCompiler.compile_idx(water_only, out_path("water.idx"))
+        MapCompiler.compile_mlp(water_only, out_path(base_dir, "water.mlp"))
+        MapCompiler.compile_db(water_only, out_path(base_dir, "water.db"))
+        MapCompiler.compile_idx(water_only, out_path(base_dir, "water.idx"))
         meta_all.extend(water_only)
 
     # 4.4 Native POI Layer
@@ -152,8 +154,8 @@ def main() -> None:
         print("[>] POI layer skipped ('none' mode selected).")
     elif args.poi_mode == "native":
         if pois_data:
-            MapCompiler.compile_db(pois_data, out_path("pois.db"), is_poi=True)
-            MapCompiler.compile_idx(pois_data, out_path("pois.idx"), is_poi=True)
+            MapCompiler.compile_db(pois_data, out_path(base_dir, "pois.db"), is_poi=True)
+            MapCompiler.compile_idx(pois_data, out_path(base_dir, "pois.idx"), is_poi=True)
             meta_all.extend(pois_data)
         else:
             print("[~] Point objects (POI) are missing in the source data.")
@@ -170,7 +172,7 @@ def main() -> None:
         else:
             map_name = "DTG1_Map"
 
-        MapCompiler.create_map_name(map_name, meta_all, out_path("map.name"))
+        MapCompiler.create_map_name(map_name, meta_all, out_path(base_dir, "map.name"))
 
     print("\n[SUCCESS] Map package compiled successfully!")
 
