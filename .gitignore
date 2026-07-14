@@ -22,3 +22,4 @@ dist/
 # Игнорировать прочее
 *.geojson
 *.dmp
+.coverage

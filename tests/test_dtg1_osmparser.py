@@ -310,3 +310,30 @@ def test_parse_track_metadata_name(mock_gpx_with_metadata):
     assert name == "Metadata Route Name"
     assert len(points) == 1
     assert points[0] == (37654000, 55123000)
+
+def test_analyze_road_surface():
+    """
+    [ROAD SURFACE ANALYZER TEST]
+    Tests the logic of _analyze_road_surface to ensure paved/unpaved
+    status is correctly inferred from 'smoothness' and 'surface' tags.
+    """
+    parser = OSMParser("dummy.osm")
+
+    # 1. Smoothness precedence over surface
+    assert parser._analyze_road_surface({"smoothness": "bad", "surface": "asphalt"}) == "unpaved"
+    assert parser._analyze_road_surface({"smoothness": "excellent", "surface": "dirt"}) == "paved"
+
+    # 2. Smoothness only
+    assert parser._analyze_road_surface({"smoothness": "impassable"}) == "unpaved"
+    assert parser._analyze_road_surface({"smoothness": "intermediate"}) == "paved"
+
+    # 3. Surface only
+    assert parser._analyze_road_surface({"surface": "dirt"}) == "unpaved"
+    assert parser._analyze_road_surface({"surface": "asphalt"}) == "paved"
+    assert parser._analyze_road_surface({"surface": "paving_stones"}) == "paved"
+    assert parser._analyze_road_surface({"surface": "woodchips"}) == "unpaved"
+
+    # 4. Unknown or missing tags
+    assert parser._analyze_road_surface({"surface": "unknown_surface"}) is None
+    assert parser._analyze_road_surface({"smoothness": "unknown_smoothness"}) is None
+    assert parser._analyze_road_surface({}) is None
