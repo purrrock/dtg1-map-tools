@@ -93,7 +93,7 @@ class GPXParser:
         for trkpt in root.findall('.//gpx:trkpt', namespaces=ns):
             try:
                 points.append((int(float(trkpt.get('lon')) * 1000000), int(float(trkpt.get('lat')) * 1000000)))
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 continue
 
         return track_name, points
