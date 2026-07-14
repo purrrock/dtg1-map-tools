@@ -7,7 +7,7 @@
 
 ### EUROPE ###
 # albania
-# andorra
+andorra
 # austria
 # azores
 # belarus
