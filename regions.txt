@@ -34,7 +34,7 @@
 # kosovo
 # latvia
 # liechtenstein
-lithuania
+# lithuania
 # luxembourg
 # macedonia
 # malta
@@ -43,7 +43,7 @@ lithuania
 # montenegro
 # netherlands
 # norway
-# poland
+poland
 # portugal
 # romania
 # serbia
@@ -52,19 +52,19 @@ lithuania
 # spain
 # sweden
 # switzerland
-turkey
-ukraine
+# turkey
+# ukraine
 
 ### RUSSIA (По федеральным округам из-за лимитов RAM) ###
 # central-fed-district
-# far-eastern-fed-district
+far-eastern-fed-district
 # north-caucasus-fed-district
-# northwestern-fed-district
-# siberian-fed-district
-# south-fed-district
-# ural-fed-district
-# volga-fed-district
-# kaliningrad
+northwestern-fed-district
+siberian-fed-district
+south-fed-district
+ural-fed-district
+volga-fed-district
+kaliningrad
 
 ### ASIA ###
 # afghanistan
@@ -73,7 +73,7 @@ ukraine
 # bangladesh
 # bhutan
 # cambodia
-china
+# china
 # gcc-states
 # india
 # indonesia
@@ -82,9 +82,9 @@ china
 # israel-and-palestine
 # japan
 # jordan
-kazakhstan
-kyrgyzstan
-laos
+# kazakhstan
+# kyrgyzstan
+# laos
 # lebanon
 # malaysia-singapore-brunei
 # maldives
@@ -99,7 +99,7 @@ laos
 # syria
 # taiwan
 # tajikistan
-thailand
+# thailand
 # turkmenistan
 # uzbekistan
 # vietnam
@@ -138,12 +138,12 @@ thailand
 # nunavut
 # ontario
 # prince-edward-island
-quebec
+# quebec
 # saskatchewan
 # yukon
 
 ### SOUTH AMERICA ###
-argentina
+# argentina
 # bolivia
 # brazil
 # chile
@@ -156,7 +156,7 @@ argentina
 # venezuela
 
 ### AFRICA ###
-algeria
+# algeria
 # angola
 # benin
 # botswana
@@ -217,7 +217,7 @@ algeria
 # cook-islands
 # fiji
 # new-caledonia
-new-zealand
+# new-zealand
 # niue
 # palau
 # papua-new-guinea
