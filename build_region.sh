@@ -1,6 +1,6 @@
 #!/bin/bash
 # Файл: build_region.sh
-# Использование: ./build_region.sh <region_name>
+# Use: ./build_region.sh <region_name>
 
 set -e
 
