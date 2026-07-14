@@ -55,6 +55,7 @@ def test_load_from_csv_value_error():
 
     # Reset state to be safe
     LookupTables.HIGHWAY_CODES.clear()
+    LookupTables.DISPLAY_SCALES.clear()
 
     with patch('builtins.open', mock_open(read_data=csv_content)):
         LookupTables.load_from_csv("dummy.csv")
@@ -63,3 +64,132 @@ def test_load_from_csv_value_error():
     assert "invalid_lod" not in LookupTables.HIGHWAY_CODES
     assert "valid" in LookupTables.HIGHWAY_CODES
     assert LookupTables.HIGHWAY_CODES["valid"] == 1001
+    assert 1001 in LookupTables.DISPLAY_SCALES
+    assert LookupTables.DISPLAY_SCALES[1001] == 100
+
+def test_load_from_csv_short_row():
+    """
+    [EDGE CASE TEST]
+    Verifies that rows with length < 11 are skipped.
+    """
+    csv_content = (
+        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod\n"
+        "1;short_row;;;roads;;#000000;1002;;1\n"
+    )
+
+    LookupTables.HIGHWAY_CODES.clear()
+
+    with patch('builtins.open', mock_open(read_data=csv_content)):
+        LookupTables.load_from_csv("dummy.csv")
+
+    assert "short_row" not in LookupTables.HIGHWAY_CODES
+
+def test_load_from_csv_disabled_layers():
+    """
+    [EDGE CASE TEST]
+    Verifies that disabled entries are added to the corresponding disabled sets.
+    """
+    csv_content = (
+        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
+        "1;disabled_road;;;roads;;#000000;1000;;1;0;\n"
+        "2;disabled_poi;;;pois;;#000000;1000;;1;false;\n"
+        "3;disabled_water;;;water;;#000000;1000;;1;no;\n"
+        "4;disabled_landuse;;;landuse;;#000000;1000;;1;off;\n"
+    )
+
+    LookupTables.DISABLED_ROADS.clear()
+    LookupTables.DISABLED_POIS.clear()
+    LookupTables.DISABLED_WATER.clear()
+    LookupTables.DISABLED_LANDUSE.clear()
+
+    with patch('builtins.open', mock_open(read_data=csv_content)):
+        LookupTables.load_from_csv("dummy.csv")
+
+    assert "disabled_road" in LookupTables.DISABLED_ROADS
+    assert "disabled_poi" in LookupTables.DISABLED_POIS
+    assert "disabled_water" in LookupTables.DISABLED_WATER
+    assert "disabled_landuse" in LookupTables.DISABLED_LANDUSE
+
+def test_load_from_csv_tag_routing():
+    """
+    [EDGE CASE TEST]
+    Verifies that tag routing parses tags with '='.
+    """
+    csv_content = (
+        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
+        "1;hospital;;;pois;amenity=hospital,place=city;#000000;2000;;1;1;\n"
+    )
+
+    if "pois" in LookupTables.TAG_ROUTING:
+        del LookupTables.TAG_ROUTING["pois"]
+
+    with patch('builtins.open', mock_open(read_data=csv_content)):
+        LookupTables.load_from_csv("dummy.csv")
+
+    assert ("amenity", "hospital") in LookupTables.TAG_ROUTING["pois"]
+    assert LookupTables.TAG_ROUTING["pois"][("amenity", "hospital")] == "hospital"
+    assert ("place", "city") in LookupTables.TAG_ROUTING["pois"]
+    assert LookupTables.TAG_ROUTING["pois"][("place", "city")] == "hospital"
+
+def test_load_from_csv_layer_processing():
+    """
+    [EDGE CASE TEST]
+    Verifies that other layers (landuse, water, pois) correctly populate their tables.
+    """
+    csv_content = (
+        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
+        "1;forest;;;landuse;;#000000;3000;;1;1;\n"
+        "2;lake;;;water;;#000000;8200;;1;1;\n"
+        "3;bank;;;pois;;#000000;4000;;1;1;circle\n"
+        "4;atm;;;pois;;#000000;4001;;1;1;\n"
+    )
+
+    LookupTables.POLYGON_CODES.clear()
+    LookupTables.POI_CODES.clear()
+    LookupTables.POI_SHAPES.clear()
+    LookupTables.DISPLAY_SCALES.clear()
+
+    with patch('builtins.open', mock_open(read_data=csv_content)):
+        LookupTables.load_from_csv("dummy.csv")
+
+    # landuse
+    assert "forest" in LookupTables.POLYGON_CODES
+    assert LookupTables.POLYGON_CODES["forest"] == 3000
+    assert LookupTables.DISPLAY_SCALES[3000] == 1
+
+    # water
+    assert "lake" in LookupTables.POLYGON_CODES
+    assert LookupTables.POLYGON_CODES["lake"] == 8200
+    assert LookupTables.DISPLAY_SCALES[8200] == 1
+
+    # pois
+    assert "bank" in LookupTables.POI_CODES
+    assert LookupTables.POI_CODES["bank"] == 4000
+    assert LookupTables.DISPLAY_SCALES[4000] == 1
+    assert LookupTables.POI_SHAPES["bank"] == "circle"
+
+    # pois without shape fallback
+    assert "atm" in LookupTables.POI_CODES
+    assert LookupTables.POI_CODES["atm"] == 4001
+    assert LookupTables.POI_SHAPES["atm"] == "rhombus"
+
+
+def test_load_from_csv_value_error_explicit():
+    """
+    [EDGE CASE TEST]
+    Explicitly tests ValueError for invalid remap_code and remap_lod.
+    """
+    csv_content = (
+        "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
+        "1;invalid_code;;;roads;;#000000;INVALID_CODE;;100;1;\n"
+        "2;invalid_lod;;;roads;;#000000;1000;;INVALID_LOD;1;\n"
+    )
+
+    LookupTables.HIGHWAY_CODES.clear()
+    LookupTables.DISPLAY_SCALES.clear()
+
+    with patch('builtins.open', mock_open(read_data=csv_content)):
+        LookupTables.load_from_csv("dummy.csv")
+
+    assert "invalid_code" not in LookupTables.HIGHWAY_CODES
+    assert "invalid_lod" not in LookupTables.HIGHWAY_CODES
