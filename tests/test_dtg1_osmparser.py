@@ -244,6 +244,10 @@ def mock_malformed_gpx_file(tmp_path):
           <trkpt lat="55.123400"></trkpt>
           <!-- Missing both -->
           <trkpt></trkpt>
+          <!-- Infinity float -->
+          <trkpt lat="inf" lon="37.654300"></trkpt>
+          <!-- Negative infinity float -->
+          <trkpt lat="-inf" lon="37.654300"></trkpt>
           <!-- Valid point -->
           <trkpt lat="55.123400" lon="37.654300"></trkpt>
         </trkseg>
