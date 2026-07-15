@@ -6,23 +6,23 @@
 # может привести к блокировке по IP со стороны файрвола Geofabrik (DDoS защита).
 
 ### EUROPE ###
-# albania
-andorra
-# austria
-# azores
+albania
+# andorra
+austria
+azores
 # belarus
-# belgium
-# bosnia-herzegovina
-# bulgaria
-# croatia
-# cyprus
-# czech-republic
-# denmark
-# estonia
-# faroe-islands
-# finland
-# france
-# georgia
+belgium
+bosnia-herzegovina
+bulgaria
+croatia
+cyprus
+czech-republic
+denmark
+estonia
+faroe-islands
+finland
+france
+georgia
 # germany
 # great-britain
 # greece
@@ -43,7 +43,7 @@ andorra
 # montenegro
 # netherlands
 # norway
-poland
+# poland
 # portugal
 # romania
 # serbia
@@ -57,14 +57,14 @@ poland
 
 ### RUSSIA (По федеральным округам из-за лимитов RAM) ###
 # central-fed-district
-far-eastern-fed-district
+# far-eastern-fed-district
 # north-caucasus-fed-district
-northwestern-fed-district
-siberian-fed-district
-south-fed-district
-ural-fed-district
-volga-fed-district
-kaliningrad
+# northwestern-fed-district
+# siberian-fed-district
+# south-fed-district
+# ural-fed-district
+# volga-fed-district
+# kaliningrad
 
 ### ASIA ###
 # afghanistan
