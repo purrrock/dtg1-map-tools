@@ -6,41 +6,41 @@
 # может привести к блокировке по IP со стороны файрвола Geofabrik (DDoS защита).
 
 ### EUROPE ###
-albania
+# albania
 # andorra
-austria
-azores
+# austria
+# azores
 # belarus
-belgium
-bosnia-herzegovina
-bulgaria
-croatia
-cyprus
-czech-republic
-denmark
-estonia
-faroe-islands
-finland
-france
-georgia
-# germany
-# great-britain
-# greece
-# hungary
-# iceland
-# ireland-and-northern-ireland
-# isle-of-man
+# belgium
+# bosnia-herzegovina
+# bulgaria
+# croatia
+# cyprus
+# czech-republic
+# denmark
+# estonia
+# faroe-islands
+# finland
+# france
+# georgia
+germany
+great-britain
+greece
+hungary
+iceland
+ireland-and-northern-ireland
+isle-of-man
 # italy
-# kosovo
-# latvia
-# liechtenstein
+kosovo
+latvia
+liechtenstein
 # lithuania
-# luxembourg
-# macedonia
-# malta
-# moldova
+luxembourg
+macedonia
+malta
+moldova
 # monaco
-# montenegro
+montenegro
 # netherlands
 # norway
 # poland
@@ -147,8 +147,8 @@ georgia
 # bolivia
 # brazil
 # chile
-# colombia
-# ecuador
+colombia
+ecuador
 # paraguay
 # peru
 # suriname
