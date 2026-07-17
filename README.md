@@ -1,5 +1,5 @@
 # Custom Offline Maps for DT NO.1 G1 / VWAR / KKTICK / Amolde HD300 Pro
-**(ATS3085S Hardware Platform, Zephyr RTOS Software Platform)**
+**(ATS3085S Hardware Platform, Glyphix OS Framework Software Platform)**
 
 🇷🇺 [Читать на русском](README_ru.md)
 

@@ -1,5 +1,5 @@
 # Кастомные офлайн-карты для DT NO.1 G1 / VWAR / KKTICK / Amolde HD300 Pro
-**(Аппаратная платформа ATS3085S, ОС Zephyr RTOS)**
+**(Аппаратная платформа ATS3085S, Glyphix OS Framework)**
 
 🇬🇧 [Read in English](README.md)
 
