@@ -11,31 +11,80 @@ on:
     - cron: '0 0 1 * *'
 
 jobs:
-  # Задача 1: Чтение текстового файла и формирование динамической матрицы
-  prepare-matrix:
+  # Задача 1: Умный планировщик очереди (Smart Scheduler)
+  prepare-release:
     runs-on: ubuntu-latest
     outputs:
-      regions: ${{ steps.set-regions.outputs.regions }}
+      regions: ${{ steps.scheduler.outputs.regions }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Parse regions.txt
-        id: set-regions
+      - name: Calculate Priority Queue (Missing -> Oldest -> Max 14)
+        id: scheduler
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Фильтруем пустые строки и комментарии, пакуем в JSON-массив через jq
-          REGIONS_JSON=$(grep -v '^[[:space:]]*$' regions.txt | grep -v '^#' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "Discovered regions: $REGIONS_JSON"
-          echo "regions=$REGIONS_JSON" >> $GITHUB_OUTPUT
+          python3 -c "
+          import os, json, subprocess
 
+          # 1. Читаем все нужные регионы из файла, игнорируя комменты
+          with open('regions.txt', 'r') as f:
+              wanted_regions = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+          # 2. Опрашиваем GitHub API о текущем состоянии релиза 'latest-maps'
+          try:
+              res = subprocess.run(['gh', 'release', 'view', 'latest-maps', '--json', 'assets'], capture_output=True, text=True, check=True)
+              assets = json.loads(res.stdout).get('assets', [])
+          except subprocess.CalledProcessError:
+              # Релиза еще нет (первый запуск)
+              assets = []
+
+          # 3. Составляем карту: Регион -> Дата обновления
+          asset_map = {}
+          for a in assets:
+              name = a['name']
+              if name.endswith('_dtg1_map.zip'):
+                  region = name.replace('_dtg1_map.zip', '')
+                  asset_map[region] = a['updatedAt']
+
+          missing = []
+          existing = []
+
+          # 4. Распределяем регионы по корзинам
+          for r in wanted_regions:
+              if r not in asset_map:
+                  missing.append(r)
+              else:
+                  existing.append((r, asset_map[r]))
+
+          # 5. Сортируем существующие по дате (самые старые первыми)
+          existing.sort(key=lambda x: x[1])
+
+          # 6. Формируем финальную очередь: сначала недостающие, затем устаревшие
+          combined = missing + [x[0] for x in existing]
+          
+          # 7. ОТРЕЗАЕМ СТРОГО 14 ШТУК
+          selected = combined[:14]
+
+          print(f'Total requested: {len(wanted_regions)}')
+          print(f'Missing: {len(missing)}, Existing: {len(existing)}')
+          print(f'Selected for this run: {selected}')
+
+          # 8. Передаем JSON-массив в матричную сборку GitHub Actions
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'regions={json.dumps(selected)}\n')
+          "
+          
   # Задача 2: Параллельная сборка карт на основе полученной матрицы
   build-maps:
-    needs: prepare-matrix
+    needs: prepare-release
+    if: ${{ needs.prepare-release.outputs.regions != '[]' }} # Защита от пустой очереди
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        region: ${{ fromJson(needs.prepare-matrix.outputs.regions) }}
+        region: ${{ fromJson(needs.prepare-release.outputs.regions) }}
 
     steps:
       - name: Checkout repository
@@ -66,7 +115,7 @@ jobs:
           path: ${{ matrix.region }}_dtg1_map.zip
           retention-days: 1
 
-# Задача 3: Публикация релиза (Rolling Release: перезапись файлов)
+  # Задача 3: Публикация релиза (Rolling Release: перезапись файлов)
   publish-release:
     needs: build-maps
     if: success() || failure()  # Даже если не все карты собрались - делать релиз
