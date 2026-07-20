@@ -93,10 +93,7 @@ germany-sachsen
 germany-sachsen-anhalt
 germany-schleswig-holstein
 germany-thueringen
-### EUROPE - UNITED KINGDOM REGIONS ###
-united-kingdom-england
-united-kingdom-scotland
-united-kingdom-wales
+great-britain
 greece
 hungary
 iceland
