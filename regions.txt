@@ -380,7 +380,7 @@ canary-islands
 cape-verde
 central-african-republic
 chad
-comoros
+comores
 congo-brazzaville
 congo-democratic-republic
 djibouti
