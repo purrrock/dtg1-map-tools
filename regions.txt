@@ -6,22 +6,22 @@
 # может привести к блокировке по IP со стороны файрвола Geofabrik (DDoS защита).
 
 ##POLAND ###
-poland/dolnoslaskie
-poland/kujawsko-pomorskie
-poland/lodzkie
-poland/lubelskie
-poland/lubuskie
-poland/malopolskie
-poland/mazowieckie
-poland/opolskie
-poland/podkarpackie
-poland/podlaskie
-poland/pomorskie
-poland/slaskie
-poland/swietokrzyskie
-poland/warminsko-mazurskie
-poland/wielkopolskie
-poland/zachodniopomorskie
+dolnoslaskie
+kujawsko-pomorskie
+lodzkie
+lubelskie
+lubuskie
+malopolskie
+mazowieckie
+opolskie
+podkarpackie
+podlaskie
+pomorskie
+slaskie
+swietokrzyskie
+warminsko-mazurskie
+wielkopolskie
+zachodniopomorskie
 
 ##EUROPE ###
 albania
