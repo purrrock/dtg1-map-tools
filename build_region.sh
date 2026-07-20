@@ -1,60 +1,68 @@
 #!/bin/bash
-# Файл: build_region.sh
-# Use: ./build_region.sh <region_name>
+# =========================================================================
+# DT G1 Map Downloader & Preprocessor Script
+# Supports cumulative batch builds with country-region prefix naming
+# =========================================================================
 
-set -e
+# Перехватываем полный префикс региона из параметров матрицы (напр., poland-dolnoslaskie)
+FULL_REGION_NAME=$1
+export REGION_NAME=$FULL_REGION_NAME
 
-export REGION_NAME=$1
+echo "[>] Starting map pipeline for target archive: ${FULL_REGION_NAME}_dtg1_map.zip"
 
-echo "1. Querying Geofabrik API for region: $REGION_NAME..."
-# Используем jq для парсинга GeoJSON индекса серверов Geofabrik и извлечения PBF URL
-PBF_URL=$(curl -sS https://download.geofabrik.de/index-v1.json | jq -r ".features[] | select(.properties.id == \"$REGION_NAME\") | .properties.urls.pbf")
+echo "1. Downloading Geofabrik Spatial Index..."
+curl -s https://download.geofabrik.de/index-v1.json -o index.json
 
+echo "2. Resolving Geofabrik Download URL (3-Tier Cascade Lookup)..."
+
+# Ступень 1: Поиск по точному совпадению (напр., russia-central-fed-district или belarus)
+PBF_URL=$(jq -r '.features[] | select(.properties.id == "'$FULL_REGION_NAME'") | .properties.urls.pbf' index.json)
+
+# Ступень 2: Поиск с заменой первого дефиса на слэш (напр., для макрорегионов Канады: canada-alberta -> canada/alberta)
 if [ -z "$PBF_URL" ] || [ "$PBF_URL" == "null" ]; then
-    echo "CRITICAL ERROR: Could not find PBF URL for region '$REGION_NAME' in Geofabrik index."
+    SLASH_NAME=$(echo "$FULL_REGION_NAME" | sed 's/-/\//')
+    echo "  [~] Exact ID '$FULL_REGION_NAME' not found. Trying slash substitution: '$SLASH_NAME'..."
+    PBF_URL=$(jq -r '.features[] | select(.properties.id == "'$SLASH_NAME'") | .properties.urls.pbf' index.json)
+fi
+
+# Ступень 3: Поиск со срезом префикса до первого дефиса (напр., для Польши: poland-dolnoslaskie -> id: dolnoslaskie)
+if [ -z "$PBF_URL" ] || [ "$PBF_URL" == "null" ]; then
+    STRIPPED_NAME=$(echo "$FULL_REGION_NAME" | cut -d'-' -f2-)
+    echo "  [~] Transformed ID not found. Trying stripped fallback ID: '$STRIPPED_NAME'..."
+    PBF_URL=$(jq -r '.features[] | select(.properties.id == "'$STRIPPED_NAME'") | .properties.urls.pbf' index.json)
+fi
+
+# Окончательная проверка: если URL так и не найден, останавливаем пайплайн
+if [ -z "$PBF_URL" ] || [ "$PBF_URL" == "null" ]; then
+    echo "[-] CRITICAL ERROR: Could not resolve download URL for region '$FULL_REGION_NAME' in Geofabrik index."
     exit 1
 fi
 
-echo "2. Downloading PBF data from $PBF_URL..."
-wget -qO raw.osm.pbf "$PBF_URL"
+echo "[SUCCESS] Found target PBF source: $PBF_URL"
 
-echo "3. Hardware Pre-culling (osmium tags-filter)..."
-# Используем префикс nwr/ (Node, Way, Relation), чтобы не потерять полигональные POI.
-# Тег building намеренно исключен: osmium аппаратно отсечет миллионы простых домов,
-# но пропустит те здания, которые имеют теги из списков amenity, shop и т.д.
-osmium tags-filter raw.osm.pbf \
-    nwr/highway nwr/landuse nwr/waterway nwr/natural nwr/barrier \
-    nwr/railway nwr/aeroway nwr/man_made nwr/route \
-    nwr/amenity nwr/shop nwr/leisure nwr/tourism nwr/sport \
-    nwr/historic nwr/craft nwr/office nwr/healthcare nwr/emergency \
-    -o filtered.osm.pbf -f pbf --overwrite
-rm -f raw.osm.pbf
+echo "3. Fetching raw pbf chunk..."
+wget -O source.osm.pbf "$PBF_URL"
 
-echo "4. Binary to XML Serialization..."
-# Конвертируем уже легковесный PBF в XML
+echo "4. Environment Optimization & Extraction via Osmium..."
+# Вырезаем только те тэги, которые прописаны в LUT, отсекая здания и мусор
+osmium tags-filter source.osm.pbf \
+  w/highway w/landuse w/natural w/leisure w/water w/waterway \
+  n/amenity n/shop n/tourism n/historic n/highway=bus_stop n/highway=traffic_signals n/barrier \
+  -o filtered.osm.pbf --overwrite
+
+echo "5. Binary to XML Serialization..."
 osmium cat filtered.osm.pbf -o map.osm -f osm --overwrite
-rm -f filtered.osm.pbf
 
 echo "-> Counting nodes for progress tracking..."
-# Быстрый подсчет строк, начинающихся с <node, и запись в переменную окружения
 export TOTAL_NODES=$(grep -c '^[[:space:]]*<node' map.osm || echo 0)
 echo "-> Total nodes to process: $TOTAL_NODES"
 
-# echo "5. Topology Optimization (osm_optimizer.py)..."
-# python -u osm_optimizer.py
+echo "6. Launching Python Compiler Engine..."
+# Запускаем компилятор. Оркестратор сам подхватит REGION_NAME и сделает красивый mapName в map.name
+python3 dtg1_map_compiler.py -p landuse
 
-#echo "6. Environment Preparation..."
-# Компилятор ожидает файл "map.osm", поэтому подменяем исходник оптимизированной версией
-# mv map_optimized.osm map.osm
+echo "7. Packaging Target Hardware Binary Package..."
+# Создаем архив, имя которого строго начинается с FULL_REGION_NAME
+zip -r "${FULL_REGION_NAME}_dtg1_map.zip" roads.mlp roads.idx landuse.mlp landuse.idx water.mlp water.idx map.name roads.db landuse.db water.db
 
-echo "7. Compiling ATS3085S Binaries..."
-# Запуск без параметров, I/O операции происходят в корне
-python dtg1_map_compiler.py
-rm -f map.osm
-
-echo "8. Packaging Distribution Archive..."
-zip -r "${REGION_NAME}_dtg1_map.zip" *.mlp *.idx *.db map.name
-
-echo "Cleanup..."
-rm -f raw.osm.pbf filtered.osm.pbf map.osm *.mlp *.idx *.db map.name
-echo "SUCCESS: ${REGION_NAME}_dtg1_map.zip generated."
+echo "[SUCCESS] Build loop complete for $FULL_REGION_NAME"
