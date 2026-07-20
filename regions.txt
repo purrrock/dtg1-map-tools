@@ -48,7 +48,7 @@ czechrepublic-jihomoravsky
 czechrepublic-karlovarsky
 czechrepublic-kralovehradecky
 czechrepublic-liberecky
-czechrepublic-moravskoslezsky
+czechrepublic-moravskoslezky
 czechrepublic-olomoucky
 czechrepublic-pardubicky
 czechrepublic-plzensky
@@ -130,7 +130,7 @@ malta
 moldova
 monaco
 montenegro
-netherlands-Drenthe
+netherlands-drenthe
 netherlands-flevoland
 netherlands-friesland
 netherlands-gelderland
@@ -145,8 +145,8 @@ netherlands-zuid-holland
 norway-nord-norge
 norway-ostlandet
 norway-sorlandet
-norway-svalbard-and-jan-mayen
-norway-trondelagnorway-ay
+norway-svalbard-janmayen
+norway-trondelag
 norway-vestlandet
 portugal
 romania
