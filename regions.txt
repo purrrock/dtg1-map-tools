@@ -48,14 +48,14 @@ czechrepublic-jihomoravsky
 czechrepublic-karlovarsky
 czechrepublic-kralovehradecky
 czechrepublic-liberecky
-czechrepublic-moravskoslezsk
-czechrepublic-olomouck
-czechrepublic-pardubick
-czechrepublic-plzensk
+czechrepublic-moravskoslezsky
+czechrepublic-olomoucky
+czechrepublic-pardubicky
+czechrepublic-plzensky
 czechrepublic-praha
-czechrepublic-stredocesk
+czechrepublic-stredocesky
 czechrepublic-ustecky
-czechrepublic-kraj
+czechrepublic-vysocina
 czechrepublic-zlinsky
 
 denmark
