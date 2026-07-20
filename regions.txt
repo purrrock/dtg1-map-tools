@@ -192,11 +192,24 @@ india-northeastern-zone
 india-northern-zone
 india-southern-zone
 india-western-zone
-indonesia
+indonesia-java
+indonesia-kalimantan
+indonesia-maluku
+indonesia-nusa-tenggara
+indonesia-papua
+indonesia-sulawesi
+indonesia-sumatra
 iran
 iraq
 israel-and-palestine
-japan
+japan-chubu
+japan-chugoku
+japan-hokkaido
+japan-kansai
+japan-kanto
+japan-kyushu
+japan-shikoku
+japan-tohoku
 jordan
 kazakhstan
 kyrgyzstan
@@ -381,7 +394,20 @@ zimbabwe
 
 ##OCEANIA ###
 american-oceania
-australia
+australia-act
+australia-ashmore-cartier
+australia-christmas-island
+australia-cocos-islands
+australia-coral-sea-islands
+australia-heard-mcdonald
+australia-new-south-wales
+australia-norfolk-island
+australia-northern-territory
+australia-queensland
+australia-south-australia
+australia-tasmania
+australia-victoria
+australia-western australia
 cook-islands
 fiji
 new-caledonia
