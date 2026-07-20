@@ -183,7 +183,7 @@ azerbaijan
 bangladesh
 bhutan
 cambodia
-china-Anhui
+china-anhui
 china-beijing
 china-chongqing
 china-fujian
