@@ -188,7 +188,7 @@ gcc-states
 ### ASIA - INDIA REGIONS ###
 india-central-zone
 india-eastern-zone
-india-northeastern-zone
+india-north-eastern-zone
 india-northern-zone
 india-southern-zone
 india-western-zone
