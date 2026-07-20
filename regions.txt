@@ -199,12 +199,12 @@ china-hong-kong
 china-hubei
 china-hunan
 china-inner-mongolia
-china-jiangsuh
-china-jiangxij
+china-jiangsu
+china-jiangxi
 china-jilin
 china-liaoning
 china-macau
-china-ningxias
+china-ningxia
 china-qinghai
 china-shaanxi
 china-shandong
