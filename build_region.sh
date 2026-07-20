@@ -41,7 +41,7 @@ fi
 echo "[SUCCESS] Found target PBF source: $PBF_URL"
 
 echo "3. Fetching raw pbf chunk..."
-wget -O source.osm.pbf "$PBF_URL"
+wget -nv -O source.osm.pbf "$PBF_URL"
 
 echo "4. Environment Optimization & Extraction via Osmium..."
 # Вырезаем только те тэги, которые прописаны в LUT, отсекая здания и мусор
