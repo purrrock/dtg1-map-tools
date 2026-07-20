@@ -1,6 +1,18 @@
 # ==========================================
 # DTG1 MAP COMPILER - REGIONS CONFIGURATION
 # ==========================================
+belarus
+
+##RUSSIA (По федеральным округам) ###
+russia-central-fed-district
+russia-far-eastern-fed-district
+russia-north-caucasus-fed-district
+russia-northwestern-fed-district
+russia-siberian-fed-district
+russia-south-fed-district
+russia-ural-fed-district
+russia-volga-fed-district
+russia-kaliningrad
 
 ##POLAND (Сгруппированные архивы) ###
 poland-dolnoslaskie
@@ -25,7 +37,6 @@ albania
 andorra
 austria
 azores
-belarus
 belgium
 bosnia-herzegovina
 bulgaria
@@ -137,17 +148,6 @@ sweden
 switzerland
 turkey
 ukraine
-
-##RUSSIA (По федеральным округам из-за лимитов RAM) ###
-russia-central-fed-district
-russia-far-eastern-fed-district
-russia-north-caucasus-fed-district
-russia-northwestern-fed-district
-russia-siberian-fed-district
-russia-south-fed-district
-russia-ural-fed-district
-russia-volga-fed-district
-russia-kaliningrad
 
 ##ASIA ###
 afghanistan
