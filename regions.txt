@@ -158,7 +158,7 @@ spain-aragon
 spain-asturias
 spain-cantabria
 spain-castilla-la-mancha
-spain-castilla-y-Leon
+spain-castilla-y-leon
 spain-cataluna
 spain-ceuta
 spain-extremadura
