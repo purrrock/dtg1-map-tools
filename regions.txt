@@ -1,9 +1,6 @@
-==========================================
-DTG1 MAP COMPILER - REGIONS CONFIGURATION
-==========================================
-Раскомментируй (убери '' в начале строки) нужные регионы для сборки.
-ВНИМАНИЕ: Одновременная сборка более 15 регионов за один коммит 
-может привести к блокировке по IP со стороны файрвола Geofabrik (DDoS защита).
+# ==========================================
+# DTG1 MAP COMPILER - REGIONS CONFIGURATION
+# ==========================================
 
 ##POLAND (Сгруппированные архивы) ###
 poland-dolnoslaskie
@@ -39,16 +36,81 @@ denmark
 estonia
 faroe-islands
 finland
-france
+### EUROPE - FRANCE REGIONS ###
+france-alsace
+france-aquitaine
+france-auvergne
+france-basse-normandie
+france-bourgogne
+france-bretagne
+france-centre
+france-champagne-ardenne
+france-corse
+france-franche-comte
+france-guadeloupe
+france-guyane
+france-haute-normandie
+france-ile-de-france
+france-languedoc-roussillon
+france-limousin
+france-lorraine
+france-martinique
+france-mayotte
+france-midi-pyrenees
+france-nord-pas-de-calais
+france-pays-de-la-loire
+france-picardie
+france-poitou-charentes
+france-provence-alpes-cote-d-azur
+france-reunion
+france-rhone-alpes
 georgia
-germany
+### EUROPE - GERMANY REGIONS ###
+germany-baden-wuerttemberg
+germany-bayern
+germany-berlin
+germany-brandenburg
+germany-bremen
+germany-hamburg
+germany-hessen
+germany-mecklenburg-vorpommern
+germany-niedersachsen
+germany-nordrhein-westfalen
+germany-rheinland-pfalz
+germany-saarland
+germany-sachsen
+germany-sachsen-anhalt
+germany-schleswig-holstein
+germany-thueringen
 great-britain
 greece
 hungary
 iceland
 ireland-and-northern-ireland
 isle-of-man
-italy
+### EUROPE - ITALY REGIONS ###
+italy-abruzzo
+italy-centro
+italy-emilia-romagna
+italy-friuli-venezia-giulia
+italy-isole
+italy-lazio
+italy-liguria
+italy-lombardia
+italy-marche
+italy-molise
+italy-nord-est
+italy-nord-ovest
+italy-piemonte
+italy-puglia
+italy-sardegna
+italy-sicilia
+italy-sud
+italy-toscana
+italy-trentino-alto-adige
+italy-umbria
+italy-valle-d-aosta
+italy-veneto
 kosovo
 latvia
 liechtenstein
@@ -93,7 +155,13 @@ bhutan
 cambodia
 china
 gcc-states
-india
+### ASIA - INDIA REGIONS ###
+india-central-zone
+india-eastern-zone
+india-northeastern-zone
+india-northern-zone
+india-southern-zone
+india-western-zone
 indonesia
 iran
 iraq
@@ -192,20 +260,20 @@ us-west-virginia
 us-wisconsin
 us-wyoming
 
-##NORTH AMERICA - CANADA REGIONS ###
-alberta
-british-columbia
-manitoba
-new-brunswick
-newfoundland-and-labrador
-northwest-territories
-nova-scotia
-nunavut
-ontario
-prince-edward-island
-quebec
-saskatchewan
-yukon
+### NORTH AMERICA - CANADA REGIONS ###
+canada-alberta
+canada-british-columbia
+canada-manitoba
+canada-new-brunswick
+canada-newfoundland-and-labrador
+canada-northwest-territories
+canada-nova-scotia
+canada-nunavut
+canada-ontario
+canada-prince-edward-island
+canada-quebec
+canada-saskatchewan
+canada-yukon
 
 ##SOUTH AMERICA ###
 argentina
