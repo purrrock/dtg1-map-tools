@@ -47,7 +47,11 @@ echo "4. Environment Optimization & Extraction via Osmium..."
 # Вырезаем только те тэги, которые прописаны в LUT, отсекая здания и мусор
 osmium tags-filter source.osm.pbf \
   w/highway w/landuse w/natural w/leisure w/water w/waterway \
-  n/amenity n/shop n/tourism n/historic n/highway=bus_stop n/highway=traffic_signals n/barrier \
+  w/amenity w/shop w/tourism w/historic w/route w/shelter_type \
+  w/man_made w/railway=station w/railway=halt \
+  n/highway n/natural n/leisure n/waterway \
+  n/amenity n/shop n/tourism n/historic n/shelter_type \
+  n/man_made n/railway=station n/railway=halt n/barrier\
   -o filtered.osm.pbf --overwrite
 
 echo "5. Binary to XML Serialization..."
