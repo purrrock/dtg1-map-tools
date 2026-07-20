@@ -448,14 +448,14 @@ niue
 palau
 papua-new-guinea
 pitcairn-islands
-polynesia
+polynesie-francaise
 samoa
 solomon-islands
 tokelau
 tonga
 tuvalu
 vanuatu
-wallis-and-futuna
+wallis-et-futuna
 
 ##ANTARCTICA ###
 antarctica
