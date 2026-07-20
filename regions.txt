@@ -439,7 +439,7 @@ australia-queensland
 australia-south-australia
 australia-tasmania
 australia-victoria
-australia-western australia
+australia-western-australia
 cook-islands
 fiji
 new-caledonia
