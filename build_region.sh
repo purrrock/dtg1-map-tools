@@ -44,10 +44,10 @@ echo "3. Fetching raw pbf chunk..."
 wget -nv -O source.osm.pbf "$PBF_URL"
 
 echo "4. Environment Optimization & Extraction via Osmium..."
-# Вырезаем только те тэги, которые прописаны в LUT, отсекая здания и мусор
+# Вырезаем только те тэги, которые рисуем, отсекая здания и мусор
 osmium tags-filter source.osm.pbf \
-    nwr/highway nwr/landuse nwr/waterway nwr/natural nwr/barrier \
-    nwr/railway nwr/aeroway nwr/man_made nwr/route \
+    nwr/highway nwr/landuse nwr/waterway nwr/water nwr/natural nwr/barrier \
+    nwr/railway nwr/aeroway nwr/man_made nwr/route nwr/place \
     nwr/amenity nwr/shop nwr/leisure nwr/tourism nwr/sport \
     nwr/historic nwr/craft nwr/office nwr/healthcare nwr/emergency \
   -o filtered.osm.pbf --overwrite
