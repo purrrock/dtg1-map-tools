@@ -43,20 +43,20 @@ bulgaria
 croatia
 cyprus
 
-czech-republic-jihocesky-kraj
-czech-republic-jihomoravsky-kraj
-czech-republic-karlovarsky-kraj
-czech-republic-kralovehradecky-kraj
-czech-republic-liberecky-kraj
-czech-republic-moravskoslezsk-kraj
-czech-republic-olomouck-kraj
-czech-republic-pardubick-kraj
-czech-republic-plzensk-kraj
-czech-republic-praha
-czech-republic-stredocesk-kraj
-czech-republic-ustecky-kraj
-czech-republic-kraj-vysocina
-czech-republic-zlinsky-kraj
+czechrepublic-jihocesky
+czechrepublic-jihomoravsky
+czechrepublic-karlovarsky
+czechrepublic-kralovehradecky
+czechrepublic-liberecky
+czechrepublic-moravskoslezsk
+czechrepublic-olomouck
+czechrepublic-pardubick
+czechrepublic-plzensk
+czechrepublic-praha
+czechrepublic-stredocesk
+czechrepublic-ustecky
+czechrepublic-kraj
+czechrepublic-zlinsky
 
 denmark
 estonia
