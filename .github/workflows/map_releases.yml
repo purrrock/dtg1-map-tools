@@ -8,7 +8,7 @@ on:
         required: true
         default: 'latest-maps'
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 * * 0,3'  # Запуск в 00:00 каждую среду и воскресенье
 
 jobs:
   # Задача 1: Умный планировщик очереди (Smart Scheduler)
@@ -20,7 +20,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Calculate Priority Queue (Missing -> Oldest -> Max 14)
+      - name: Calculate Priority Queue (Missing -> Oldest -> Max 19)
         id: scheduler
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,8 +64,8 @@ jobs:
           # 6. Формируем финальную очередь: сначала недостающие, затем устаревшие
           combined = missing + [x[0] for x in existing]
           
-          # 7. ОТРЕЗАЕМ СТРОГО 14 ШТУК
-          selected = combined[:14]
+          # 7. ОТРЕЗАЕМ СТРОГО 19 ШТУК
+          selected = combined[:19]
 
           print(f'Total requested: {len(wanted_regions)}')
           print(f'Missing: {len(missing)}, Existing: {len(existing)}')
