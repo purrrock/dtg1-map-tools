@@ -409,7 +409,7 @@ niger
 nigeria
 rwanda
 sao-tome-and-principe
-senegal
+senegal-and-gambia
 seychelles
 sierra-leone
 somalia
