@@ -116,7 +116,12 @@ moldova
 monaco
 montenegro
 netherlands
-norway
+norway-nord-Norge
+norway-ostlandet
+norway-sorlandet
+norway-svalbard-and-jan-mayen
+norway-trondelagnorway-ay
+norway-vestlandet
 poland
 portugal
 romania
