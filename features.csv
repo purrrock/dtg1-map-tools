@@ -163,7 +163,7 @@ Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LO
 2529;beauty_shop;Black;100;pois;shop=beauty;Салон красоты;7219;Salmon;500;0;shop
 2530;video_shop;Black;100;pois;shop=video;Видеомагазин;7219;Salmon;500;0;shop
 2541;car_dealership;Black;100;pois;shop=car;Автосалон;7219;Salmon;500;0;shop
-2542;bicycle_shop;Black;100;pois;shop=bicycle;Веломагазин;7209;Pink;500;1;bicycle
+2542;bicycle_shop;Black;100;pois;shop=bicycle;Веломагазин;7219;Salmon;500;1;bicycle
 2543;doityourself;Black;100;pois;shop=doityourself;Строительный магазин;7219;Salmon;500;1;hammer
 2543;hardware;Black;100;pois;shop=hardware;Хозмаг;7219;Salmon;500;1;hammer
 2544;furniture_shop;Black;100;pois;shop=furniture;Мебельный магазин;7219;Salmon;500;0;shop
@@ -259,7 +259,7 @@ Code;fclass;Color;LOD;Layer;OSM_Tags;Description;Remap_Code;Remap_Color;Remap_LO
 5652;airfield;Black;100;pois;aeroway=airfield;Летное поле;7219;Salmon;500;0;transport
 5655;helipad;Black;100;pois;aeroway=helipad;Вертолетная площадка;7219;Salmon;500;0;transport
 5656;apron;Black;100;pois;aeroway=apron;Перрон;7219;Salmon;500;0;transport
-5661;ferry_terminal;Black;500;pois;amenity=ferry_terminal;Паромный терминал;7219;Salmon;500;1;transport
+5661;ferry_terminal;Black;500;pois;amenity=ferry_terminal;Паромный терминал;8200;Blue;500;1;transport
 5671;aerialway_station;Black;100;pois;aerialway=station;Станция канатной дороги;7219;Salmon;500;0;transport
 2962;shower;Black;500;pois;amenity=shower;Душ;8200;Blue;500;1;shower
 4113;saddle;Black;500;pois;natural=saddle;Перевал;7219;Salmon;500;1;rhombus
