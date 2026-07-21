@@ -2,6 +2,8 @@
 # DTG1 MAP COMPILER - REGIONS CONFIGURATION
 # ==========================================
 belarus
+ukraine
+andorra
 
 ##RUSSIA (По федеральным округам) ###
 russia-central-fed-district
@@ -34,7 +36,6 @@ poland-zachodniopomorskie
 
 ##EUROPE ###
 albania
-andorra
 austria
 azores
 belgium
@@ -174,7 +175,6 @@ spain-valencia
 sweden
 switzerland
 turkey
-ukraine
 
 ##ASIA ###
 afghanistan

@@ -64,7 +64,16 @@ echo "6. Launching Python Compiler Engine..."
 python3 dtg1_map_compiler.py -p landuse
 
 echo "7. Packaging Target Hardware Binary Package..."
-# Создаем архив, имя которого строго начинается с FULL_REGION_NAME
-zip -r "${FULL_REGION_NAME}_dtg1_map.zip" roads.mlp roads.idx landuse.mlp landuse.idx water.mlp water.idx map.name roads.db landuse.db water.db
+
+# 1. Создаем подпапку с названием региона (например, "poland-mazowieckie")
+DIR_NAME="${FULL_REGION_NAME}"
+mkdir -p "$DIR_NAME"
+
+# 2. Перемещаем в неё все бинарные слои и метаданные
+# Используем 2>/dev/null, чтобы скрипт не ругался, если какого-то слоя (например, water) нет в этом регионе
+mv *.mlp *.idx *.db map.name "$DIR_NAME/" 2>/dev/null
+
+# 3. Архивируем саму папку рекурсивно
+zip -r "${FULL_REGION_NAME}_dtg1_map.zip" "$DIR_NAME"
 
 echo "[SUCCESS] Build loop complete for $FULL_REGION_NAME"
