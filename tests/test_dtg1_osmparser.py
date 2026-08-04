@@ -274,6 +274,47 @@ def test_gpx_parser_malformed_floats(mock_malformed_gpx_file):
     assert points[0] == (37654321, 55123456)
     assert points[1] == (37654300, 55123400)
 
+@pytest.fixture
+def mock_gpx_exceptions_file(tmp_path):
+    """
+    Generation of a GPX file with explicit values that trigger ValueError, TypeError, and OverflowError.
+    """
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+    <gpx xmlns="http://www.topografix.com/GPX/1/1">
+      <trk>
+        <name>Exceptions Route</name>
+        <trkseg>
+          <!-- Valid point -->
+          <trkpt lat="55.123456" lon="37.654321"></trkpt>
+          <!-- ValueError: invalid literal for float() -->
+          <trkpt lat="invalid_float" lon="37.654300"></trkpt>
+          <!-- TypeError: float() argument must be a string or a real number, not 'NoneType' -->
+          <trkpt lat="55.123400"></trkpt>
+          <!-- OverflowError: cannot convert float infinity to integer -->
+          <trkpt lat="1e400" lon="37.654300"></trkpt>
+          <!-- Valid point -->
+          <trkpt lat="55.123400" lon="37.654300"></trkpt>
+        </trkseg>
+      </trk>
+    </gpx>
+    """
+    path = tmp_path / "exceptions_route.gpx"
+    path.write_text(content)
+    return str(path)
+
+def test_gpx_parser_exceptions(mock_gpx_exceptions_file):
+    """
+    [EDGE CASE]
+    Test explicit handling of ValueError, TypeError, and OverflowError
+    during GPX track parsing.
+    """
+    name, points = GPXParser.parse_track(mock_gpx_exceptions_file)
+
+    assert name == "Exceptions Route"
+    assert len(points) == 2
+    assert points[0] == (37654321, 55123456)
+    assert points[1] == (37654300, 55123400)
+
 def test_parse_track_nonexistent_file():
     """
     [EDGE CASE]
