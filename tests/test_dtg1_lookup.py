@@ -57,7 +57,8 @@ def test_load_from_csv_value_error(remap_code, remap_lod):
     """
     csv_content = (
         "id;fclass;alias;type;layer;tag;color;remap_code;width;remap_lod;enabled;shape\n"
-            f"1;invalid_entry;;;roads;;#000000;{remap_code};;{remap_lod};1;\n"
+        f"1;invalid_entry;;;roads;;#000000;{remap_code};;{remap_lod};1;\n"
+        "2;valid_road;;;roads;;#000000;1000;;1;1;\n"
     )
 
     # Reset state to be safe
@@ -68,6 +69,9 @@ def test_load_from_csv_value_error(remap_code, remap_lod):
         LookupTables.load_from_csv("dummy.csv")
 
     assert "invalid_entry" not in LookupTables.HIGHWAY_CODES
+    assert "valid_road" in LookupTables.HIGHWAY_CODES
+    assert LookupTables.HIGHWAY_CODES["valid_road"] == 1000
+    assert LookupTables.DISPLAY_SCALES[1000] == 1
 
 def test_load_from_csv_short_row():
     """
