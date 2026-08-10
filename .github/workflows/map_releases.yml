@@ -8,7 +8,7 @@ on:
         required: true
         default: 'latest-maps'
   schedule:
-    - cron: '0 0 * * 0,3'  # Запуск в 00:00 каждую среду и воскресенье
+    - cron: '0 3 1 7 *'  # Запуск 1 июля в 03:00
 
 jobs:
   # Задача 1: Умный планировщик очереди (Smart Scheduler)
